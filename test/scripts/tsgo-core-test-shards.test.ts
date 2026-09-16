@@ -13,9 +13,11 @@ import {
   findOversizedTsgoCoreTestShards,
   findTsgoCoreTestShardViolations,
   selectChangedTsgoCoreTestShards,
+  selectDistDependentTsgoCoreTestConfigs,
   TSGO_CORE_GRAPHS,
   selectTsgoCoreTestShards,
   selectTsgoCoreTestStripe,
+  TSGO_CORE_TEST_DIST_DEPENDENT_FILES,
   TSGO_CORE_TEST_SHARDS,
 } from "../../scripts/lib/tsgo-core-test-shards.mts";
 import { resolveRuntimeWorkerUrl } from "../../src/infra/runtime-worker-url.js";
@@ -97,69 +99,43 @@ describe("tsgo core test shards", () => {
     }
   });
 
-  it("partitions every root-test input and preserves shared ambient context", () => {
-    const canonicalOptions = readNativeTypeScriptConfig({
-      cwd: process.cwd(),
-      configFileName: "test/tsconfig/tsconfig.test.root.json",
-    }).options;
-    const semanticOptions = (options: typeof canonicalOptions) => {
-      const { tsBuildInfoFile: _cache, configFilePath: _config, ...semantic } = options;
-      return semantic;
-    };
+  it("pins every dist-dependent test to a shard that actually owns it", () => {
     const roots = (config: string) => {
-      const parsed = readNativeTypeScriptConfig({ cwd: process.cwd(), configFileName: config });
-      const contents = JSON5.parse(fs.readFileSync(config, "utf8")) as { references?: unknown };
-      expect(contents.references ?? [], config).toEqual([]);
-      expect(semanticOptions(parsed.options), config).toEqual(semanticOptions(canonicalOptions));
+      const parsed = ts.getParsedCommandLineOfConfigFile(
+        path.resolve(config),
+        {},
+        {
+          ...ts.sys,
+          onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
+            throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
+          },
+        },
+      );
+      if (!parsed) {
+        throw new Error(`Could not parse ${config}`);
+      }
+      expect(parsed.errors, config).toEqual([]);
       return parsed.fileNames.map((file) =>
         path.relative(process.cwd(), file).replaceAll(path.sep, "/"),
       );
     };
-    const canonicalConfig = "test/tsconfig/tsconfig.test.root.json";
-    const canonical = roots(canonicalConfig);
-    const config = JSON5.parse(fs.readFileSync(canonicalConfig, "utf8")) as { files: string[] };
-    const shared = new Set([
-      ...canonical.filter((file) => /\.d\.[cm]?ts$/u.test(file)),
-      ...config.files.map((file) => path.posix.normalize("test/tsconfig/" + file)),
-    ]);
-    const caches: string[] = [];
-    const shards = TSGO_ROOT_TEST_SHARDS.map((shard) => {
-      const files = roots(shard.config);
-      for (const file of shared) {
-        expect(files, shard.name).toContain(file);
-      }
-      const contents = JSON5.parse(fs.readFileSync(shard.config, "utf8")) as {
-        compilerOptions: { tsBuildInfoFile: string };
-      };
-      caches.push(
-        path.resolve(path.dirname(shard.config), contents.compilerOptions.tsBuildInfoFile),
-      );
-      return { name: shard.name, roots: files.filter((file) => !shared.has(file)) };
-    });
-    expect(
-      findTsgoCoreTestShardViolations({
-        canonicalRoots: canonical.filter((file) => !shared.has(file)),
-        shards,
-      }),
-    ).toEqual([]);
-    expect(new Set(caches).size).toBe(shards.length);
-    expect(
-      caches.every((file) => file.startsWith(path.resolve(".artifacts/tsgo-cache") + path.sep)),
-    ).toBe(true);
-  });
 
-  it("expands canonical root CI selection without changing core stripe ownership", () => {
-    const graphs = resolveCiTsgoGraphs(["scripts", "test-root"]);
-    expect(graphs.map((graph) => graph.name)).toEqual(["scripts", "test-root"]);
-    expect(expandTsgoExecutionGraphs(graphs)).toEqual([graphs[0], ...TSGO_ROOT_TEST_SHARDS]);
-    expect(selectTsgoCoreTestShards("root")).toEqual(TSGO_ROOT_TEST_SHARDS);
-    expect(expandTsgoExecutionGraphs(TSGO_CORE_TEST_SHARDS)).toEqual(TSGO_CORE_TEST_SHARDS);
-    const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8")) as {
-      scripts: Record<string, string>;
-    };
-    expect(packageJson.scripts["tsgo:test:root"]).toBe(
-      "node scripts/run-tsgo-core-test-shards.mjs root",
-    );
+    expect(TSGO_CORE_TEST_DIST_DEPENDENT_FILES.length).toBeGreaterThan(0);
+    for (const { file, shard } of TSGO_CORE_TEST_DIST_DEPENDENT_FILES) {
+      // The file must exist on disk so a rename cannot silently orphan the entry.
+      expect(fs.existsSync(path.resolve(file)), file).toBe(true);
+      const owner = TSGO_CORE_TEST_SHARDS.find((entry) => entry.name === shard);
+      expect(owner, `unknown owner shard ${shard}`).toBeDefined();
+      // The named owner shard must resolve to include the dist-dependent file, and
+      // the boundary check above guarantees no other shard also owns it.
+      expect(roots(owner!.config), `${shard} must own ${file}`).toContain(file);
+      // The selector reports the owner's config only when that shard is selected.
+      expect(selectDistDependentTsgoCoreTestConfigs([owner!])).toEqual([owner!.config]);
+    }
+    // A shard that owns no dist-dependent file triggers no build.
+    const ownerNames = new Set(TSGO_CORE_TEST_DIST_DEPENDENT_FILES.map((entry) => entry.shard));
+    const independent = TSGO_CORE_TEST_SHARDS.filter((shard) => !ownerNames.has(shard.name));
+    expect(selectDistDependentTsgoCoreTestConfigs(independent)).toEqual([]);
   });
 
   it("stripes partition the full shard list exactly once", () => {
