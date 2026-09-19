@@ -17,13 +17,14 @@ import {
   type DiagnosticEventPayload,
 } from "../infra/diagnostic-events.js";
 import type { GatewayActiveWorkInspectors } from "../infra/gateway-active-work.js";
+import { resetSystemEventsForTest } from "../infra/system-events.js";
 import type { RunExit, SpawnInput } from "../process/supervisor/types.js";
 import { createAgentToolExecutionBudget } from "./agent-tool-source-execution-guard.js";
 import { createCodingToolsGatewayCaller } from "./agent-tools.caller.js";
 import { getFinishedSession } from "./bash-process-registry.js";
 import { createRunExit, runtimeManagedRun } from "./bash-tools.exec-runtime.test-support.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
-import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
+import { resetExecSteeringQueueForTest } from "./exec-steering-queue.js";
 import {
   getGatewayToolCallerIdentity,
   withGatewayToolCallerIdentity,
@@ -92,6 +93,12 @@ beforeEach(() => {
 
 afterEach(() => {
   resetProcessRegistryForTests();
+  // Clear the exec-steering queue and its process-wide consumption observer so
+  // the observer lazily registered by runExecProcess cannot leak into a later
+  // file in this non-isolated worker. resetSystemEventsForTest is invoked
+  // through the mocked-but-importOriginal system-events module below.
+  resetExecSteeringQueueForTest();
+  resetSystemEventsForTest();
 });
 
 function runTestExecProcess(params: Partial<Parameters<typeof runExecProcess>[0]> = {}) {
