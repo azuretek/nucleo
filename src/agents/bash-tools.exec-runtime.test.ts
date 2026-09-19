@@ -30,7 +30,7 @@ import {
 } from "./tools/gateway-caller-context.js";
 
 const requestHeartbeatMock = vi.hoisted(() => vi.fn());
-const enqueueSystemEventWithReceiptMock = vi.hoisted(() => vi.fn());
+const enqueueSystemEventReceiptMock = vi.hoisted(() => vi.fn());
 const supervisorMock = vi.hoisted(() => ({
   spawn: vi.fn(),
 }));
@@ -39,9 +39,20 @@ vi.mock("../infra/heartbeat-wake.js", () => ({
   requestHeartbeat: requestHeartbeatMock,
 }));
 
-vi.mock("../infra/system-events.js", () => ({
-  enqueueSystemEventWithReceipt: enqueueSystemEventWithReceiptMock,
-}));
+// Spy only on enqueueSystemEventReceipt; keep every other export real. The
+// exec-steering queue singleton is a process-wide globalThis object that
+// persists across test files in a worker, and its observer/context-key removal
+// bind to whatever system-events module it first imported. Replacing the whole
+// module with stubs would leak no-op bindings into a later suite that uses the
+// real queue; importActual keeps those real so no cross-file contamination
+// occurs regardless of file execution order.
+vi.mock("../infra/system-events.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../infra/system-events.js")>();
+  return {
+    ...actual,
+    enqueueSystemEventReceipt: enqueueSystemEventReceiptMock,
+  };
+});
 
 vi.mock("../process/supervisor/index.js", () => ({
   getProcessSupervisor: () => ({
@@ -74,8 +85,8 @@ beforeEach(() => {
   resetGatewaySuspendCoordinatorForLifecycleRestart();
   resetProcessRegistryForTests();
   requestHeartbeatMock.mockReset();
-  enqueueSystemEventWithReceiptMock.mockReset();
-  enqueueSystemEventWithReceiptMock.mockReturnValue(vi.fn(() => true));
+  enqueueSystemEventReceiptMock.mockReset();
+  enqueueSystemEventReceiptMock.mockReturnValue({ eventId: "evt-test", remove: vi.fn(() => true) });
   supervisorMock.spawn.mockReset();
 });
 
@@ -157,7 +168,7 @@ function prepareSuspension(requestId: string) {
 }
 
 function requireSystemEventCall(): [string, Record<string, unknown>] {
-  const call = enqueueSystemEventWithReceiptMock.mock.calls[0];
+  const call = enqueueSystemEventReceiptMock.mock.calls[0];
   if (!call) {
     throw new Error("expected system event call");
   }
@@ -625,7 +636,7 @@ describe("sandbox exec finalization suspension", () => {
       expect(finalizeExec).toHaveBeenCalledOnce();
       expect(getActiveBackgroundExecSessionCount()).toBe(0);
       expect(run.session.finalizing).toBe(false);
-      expect(enqueueSystemEventWithReceiptMock).toHaveBeenCalledTimes(1);
+      expect(enqueueSystemEventReceiptMock).toHaveBeenCalledTimes(1);
       expect(requireSystemEventCall()[0]).toContain(
         expectedStatus === "failed" ? "Exec failed" : "Exec completed",
       );
@@ -648,6 +659,163 @@ describe("sandbox exec finalization suspension", () => {
       }
     },
   );
+});
+
+describe("terminal execution-context release", () => {
+  it.each([
+    { path: "notify", trace: ["task", "enqueue", "wake"] },
+    { path: "quiet", trace: ["task"] },
+    { path: "unrouted", trace: ["task"] },
+    { path: "observed", trace: ["task"] },
+    { path: "task failure", trace: ["task", "task"] },
+    { path: "enqueue failure", trace: ["task", "enqueue", "task"] },
+    { path: "wake failure", trace: ["task", "enqueue", "wake", "task"] },
+  ])(
+    "releases routing after $path without changing notification order",
+    async ({ path, trace }) => {
+      const exit = createDeferred<RunExit>();
+      const observed: string[] = [];
+      const removal = vi.fn(() => true);
+      const deliveryContext = { channel: "telegram", to: "synthetic-chat" };
+      const failure = new Error("notification boundary failed");
+      enqueueSystemEventReceiptMock.mockImplementation((_text, options) => {
+        observed.push("enqueue");
+        expect(options.deliveryContext).toEqual(deliveryContext);
+        if (path === "enqueue failure") {
+          throw failure;
+        }
+        return { eventId: "evt-test", remove: removal };
+      });
+      requestHeartbeatMock.mockImplementation(() => {
+        observed.push("wake");
+        if (path === "wake failure") {
+          throw failure;
+        }
+      });
+      supervisorMock.spawn.mockImplementationOnce(async (input: SpawnInput) => ({
+        ...runtimeManagedRun(input, path === "quiet" ? "" : "retained output\n"),
+        wait: () => exit.promise,
+      }));
+      const run = await runExecProcess({
+        command: "context-release",
+        workdir: "/tmp",
+        env: {},
+        usePty: false,
+        warnings: [],
+        maxOutput: 1_000,
+        pendingMaxOutput: 1_000,
+        scopeKey: "process-scope",
+        sessionKey: path === "unrouted" ? undefined : "agent:main:main",
+        agentId: "main",
+        eventRouting: { mainKey: "main", sessionScope: "per-sender" },
+        notifyDeliveryContext: deliveryContext,
+        notifyOnExit: true,
+        notifyOnExitEmptySuccess: false,
+        timeoutSec: null,
+        onSettledBeforeNotify: () => {
+          observed.push("task");
+          if (path === "task failure" && observed.length === 1) {
+            throw failure;
+          }
+        },
+      });
+      markBackgrounded(run.session);
+      if (path === "observed") {
+        acknowledgeNotifyOnExit(run.session);
+      }
+      exit.resolve(createRunExit());
+      const outcome = await run.promise;
+      expect(observed).toEqual(trace);
+      expect(outcome.status).toBe(path.endsWith("failure") ? "failed" : "completed");
+      const retained = getFinishedSession(run.session.id);
+      expect(retained).toMatchObject({ scopeKey: "process-scope", terminalStatus: "completed" });
+      for (const field of [
+        "sessionKey",
+        "agentId",
+        "eventRouting",
+        "notifyDeliveryContext",
+        "notifyOnExit",
+        "notifyOnExitEmptySuccess",
+        "stdin",
+      ] as const) {
+        expect(retained?.[field], field).toBeUndefined();
+      }
+      expect(retained?.notifyOnExitRemoval).toBe(trace.includes("wake") ? removal : undefined);
+      expect(removal).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("exec settlement recovery", () => {
+  it.each([
+    { boundary: "task", trace: ["task:completed", "task:failed", "scope-released"] },
+    {
+      boundary: "enqueue",
+      trace: ["task:completed", "enqueue", "task:failed", "scope-released"],
+    },
+    {
+      boundary: "wake",
+      trace: ["task:completed", "enqueue", "wake", "task:failed", "scope-released"],
+    },
+  ])("retries $boundary failure before releasing the exec scope", async ({ boundary, trace }) => {
+    const exit = createDeferred<RunExit>();
+    const observed: string[] = [];
+    const identities: Array<ReturnType<typeof getGatewayToolCallerIdentity>> = [];
+    const failure = new Error("process settlement failed");
+    const scopeKey = `settlement-recovery:${boundary}`;
+    enqueueSystemEventReceiptMock.mockImplementation(() => {
+      observed.push("enqueue");
+      if (boundary === "enqueue") {
+        throw failure;
+      }
+      return { eventId: "evt-test", remove: vi.fn(() => true) };
+    });
+    requestHeartbeatMock.mockImplementation(() => {
+      observed.push("wake");
+      if (boundary === "wake") {
+        throw failure;
+      }
+    });
+    supervisorMock.spawn.mockImplementationOnce(async (input: SpawnInput) => ({
+      ...runtimeManagedRun(input, "process output\n"),
+      wait: () => exit.promise,
+    }));
+    const run = await withGatewayToolCallerIdentity(
+      { agentId: "main", sessionKey: "agent:main:settlement-recovery" },
+      () =>
+        runExecProcess({
+          command: "settlement-recovery",
+          workdir: "/tmp",
+          env: {},
+          usePty: false,
+          warnings: [],
+          maxOutput: 1000,
+          pendingMaxOutput: 1000,
+          scopeKey,
+          sessionKey: "agent:main:settlement-recovery",
+          notifyOnExit: true,
+          timeoutSec: null,
+          onSettledBeforeNotify: (outcome) => {
+            observed.push(`task:${outcome.status}`);
+            identities.push(getGatewayToolCallerIdentity());
+            if (boundary === "task" && observed.length === 1) {
+              throw failure;
+            }
+          },
+        }),
+    );
+    markBackgrounded(run.session);
+    const joined = waitForExecScope(scopeKey).then(() => {
+      observed.push("scope-released");
+    });
+    exit.resolve(createRunExit());
+
+    const outcome = await run.promise;
+    await joined;
+    expect(outcome.status).toBe("failed");
+    expect(observed).toEqual(trace);
+    expect(identities).toEqual([undefined, undefined]);
+  });
 });
 
 describe("runExecProcess exit outcomes", () => {
