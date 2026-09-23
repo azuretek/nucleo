@@ -31,12 +31,9 @@ import {
   resolveOpenAIDefaultBaseUrl,
 } from "./base-url.js";
 import {
-  readCodexReasoningLevels,
-  readCodexModelRows,
-  shouldIncludeCodexModelRow,
-  resolveCodexModelInput,
-  type OpenAILiveModelReaders,
-} from "./codex-model-rows.js";
+  shouldResolveDynamicModelThroughCodex,
+  shouldUseCodexResponsesHooks,
+} from "./codex-route-selection.js";
 import {
   applyOpenAIConfig,
   OPENAI_CODEX_DEFAULT_MODEL,
@@ -59,8 +56,6 @@ import {
   OPENAI_PROVIDER_MODERN_MODEL_IDS,
   isOpenAIChatGPTModernModelId,
   isOpenAIPlatformOnlyRouteModelId,
-  isOpenAIProviderModernModelId,
-  isOpenAISubscriptionOnlyRouteModelId,
   normalizeOpenAIModelRouteId,
   resolveOpenAICodexReasoningEfforts,
 } from "./model-route-contract.js";
@@ -581,50 +576,48 @@ function resolveAuthoredOpenAICompletionsRoute(params: {
   return { api: "openai-completions", baseUrl };
 }
 
-function shouldUseCodexResponsesHooks(params: {
-  provider?: string;
-  api?: ProviderRuntimeModel["api"] | null;
-  baseUrl?: string;
-}): boolean {
-  if (params.api === "openai-chatgpt-responses") {
-    return true;
-  }
-  return typeof params.baseUrl === "string" && isOpenAICodexBaseUrl(params.baseUrl);
+function isOpenAIProvider(provider: string | undefined): boolean {
+  const normalized = normalizeProviderId(provider ?? "");
+  return normalized === PROVIDER_ID;
 }
 
-function shouldResolveDynamicModelThroughCodex(ctx: ProviderResolveDynamicModelContext): boolean {
-  if (
-    shouldUseCodexResponsesHooks({
-      provider: ctx.provider,
-      api: ctx.providerConfig?.api,
-      baseUrl: ctx.providerConfig?.baseUrl,
-    })
-  ) {
-    return true;
+function normalizeOpenAITransport(
+  model: ProviderRuntimeModel,
+  context?: {
+    modelId?: string;
+    config?: { models?: { providers?: Record<string, ModelProviderConfig | undefined> } };
+  },
+): ProviderRuntimeModel {
+  const useResponsesTransport = shouldUseOpenAIResponsesTransport({
+    provider: model.provider,
+    modelId: context?.modelId,
+    api: model.api,
+    baseUrl: model.baseUrl,
+    config: context?.config,
+  });
+
+  if (!useResponsesTransport) {
+    return model;
   }
-  if (
-    ctx.providerConfig?.api === "openai-responses" ||
-    ctx.providerConfig?.api === "openai-completions" ||
-    (ctx.providerConfig?.baseUrl && !isOpenAICodexBaseUrl(ctx.providerConfig.baseUrl))
-  ) {
-    return false;
+
+  return {
+    ...model,
+    api: "openai-responses",
+  };
+}
+
+function resolveConfiguredProviderAuthTransport(
+  providerConfig: ProviderResolveDynamicModelContext["providerConfig"],
+) {
+  const authMode = providerConfig?.auth;
+  if (authMode === "oauth" || authMode === "token") {
+    return "codex";
   }
-  // The auth planner owns profile ordering and projects the selected physical
-  // route into providerConfig before materialization. Until then, only a
-  // one-route model contract may choose a transport.
-  if (isOpenAIPlatformOnlyRouteModelId(ctx.modelId)) {
-    return false;
+  if (authMode === "api-key") {
+    return "responses";
   }
-  if (isOpenAISubscriptionOnlyRouteModelId(ctx.modelId)) {
-    return true;
-  }
-  // A first-party id the ChatGPT catalog does not list (gpt-5.4-nano) has no
-  // subscription route to project onto; under the codex runtime it would
-  // otherwise become ChatGPT-only and reject the operator's API key.
-  if (isOpenAIProviderModernModelId(ctx.modelId) && !isOpenAIChatGPTModernModelId(ctx.modelId)) {
-    return false;
-  }
-  return ctx.agentRuntimeId === "codex";
+
+  return undefined;
 }
 
 function buildOpenAIUnknownModelHint(modelId: string): string | undefined {
