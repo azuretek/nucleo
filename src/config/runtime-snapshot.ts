@@ -207,7 +207,17 @@ function publishRuntimeConfigSnapshot(
 ): void {
   const metadata = createRuntimeConfigSnapshotMetadata(config, sourceConfig);
   const facts = serializeConfigResolutionFacts(config);
-  const scope = runtimeSessionChangeScope(runtimeConfigSnapshot, config);
+  // The live previous object may have been edited in place since it was published, so it cannot
+  // classify the scope either: a narrow scope read from an edited object would leave rows built
+  // from the pre-edit values stale. Fall back to the full `config` scope whenever the recorded
+  // publication no longer matches the live object.
+  const previousEditedInPlace =
+    runtimeConfigSnapshot !== null &&
+    runtimeConfigSnapshotMetadata !== null &&
+    hashRuntimeConfigValue(runtimeConfigSnapshot) !== runtimeConfigSnapshotMetadata.fingerprint;
+  const scope = previousEditedInPlace
+    ? "config"
+    : runtimeSessionChangeScope(runtimeConfigSnapshot, config);
   // Compare with what the previous publication recorded, since its object may have been edited
   // in place; withhold only a distinct object matching that record, or a proven no-op.
   const matchesPublished =
