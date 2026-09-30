@@ -924,6 +924,9 @@ describe("exec completion steering product proof", () => {
           expect(failedSends.length).toBeGreaterThan(0);
           expect(durablePending(key, "F")).toBe(true);
           expect(steeringPending(key)).toBe(true);
+          // Read the channel's delivery trace before the recovery turn, so the
+          // recovered steered reply can be asserted as a new, once-only channel send.
+          const deliveriesBeforeRecovery = await readDeliveries();
           const second = await startRun({ sessionKey: key, message: "PROOF_FOLLOWUP F" });
           proof("F.recovery-run", { status: await waitRun(second) });
           failingFinalSendMarker = undefined;
@@ -942,6 +945,25 @@ describe("exec completion steering product proof", () => {
           expect(carriers.at(-1)?.seq).toBe(recovered?.seq);
           expect(durablePending(key, "F")).toBe(false);
           expect(steeringPending(key)).toBe(false);
+          // The recovery turn's own final reply must reach the proof channel, so a
+          // false acknowledgment or suppressed final cannot leave this green: read
+          // the channel's delivery trace again and require exactly one new send.
+          const deliveriesAfterRecovery = await readDeliveries();
+          const recoveredDeliveries = deliveriesAfterRecovery.slice(
+            deliveriesBeforeRecovery.length,
+          );
+          proof("F.recovery-channel-delivery", {
+            deliveriesBeforeRecovery: deliveriesBeforeRecovery.length,
+            deliveriesAfterRecovery: deliveriesAfterRecovery.length,
+            recoveredDeliveries,
+          });
+          expect(recoveredDeliveries).toHaveLength(1);
+          const recoveredDelivery = JSON.parse(recoveredDeliveries[0] as string) as {
+            to?: string;
+            text?: string;
+          };
+          expect(recoveredDelivery.to).toBe("proof-final-destination");
+          expect(recoveredDelivery.text ?? "").not.toContain(FAILING_SEND_MARKER);
         }
 
         proof("provider-requests", {
