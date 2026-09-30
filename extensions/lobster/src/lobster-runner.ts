@@ -231,6 +231,37 @@ async function loadEmbeddedToolRuntimeFromPackage(): Promise<EmbeddedToolRuntime
   return (await import(coreSpecifier)) as EmbeddedToolRuntime;
 }
 
+/**
+ * Lobster resolves a sole registered direct adapter before it consults its
+ * environment auto-detect, so a workflow step that omits `--provider` would
+ * move to the in-process `embedded` adapter on upgrade instead of the Gateway
+ * HTTP route it used before. Pin the provider Lobster would have auto-detected
+ * (`LOBSTER_PI_LLM_ADAPTER_URL`, then `OPENCLAW_URL`/`CLAWD_URL`, then
+ * `LOBSTER_LLM_ADAPTER_URL`) whenever the workflow has not chosen a route of
+ * its own. Lobster reads a step's `--provider` before `LOBSTER_LLM_PROVIDER`,
+ * so naming `embedded` still selects the registered direct adapter.
+ */
+function resolveEmbeddedEnv(
+  base: NodeJS.ProcessEnv,
+  llmAdapters?: Record<string, EmbeddedLlmAdapter>,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...base };
+  if (!llmAdapters || String(env.LOBSTER_LLM_PROVIDER ?? "").trim()) {
+    return env;
+  }
+  const detected = String(env.LOBSTER_PI_LLM_ADAPTER_URL ?? "").trim()
+    ? "pi"
+    : String(env.OPENCLAW_URL ?? env.CLAWD_URL ?? "").trim()
+      ? "openclaw"
+      : String(env.LOBSTER_LLM_ADAPTER_URL ?? "").trim()
+        ? "http"
+        : "";
+  if (detected) {
+    env.LOBSTER_LLM_PROVIDER = detected;
+  }
+  return env;
+}
+
 export function createEmbeddedLobsterRunner(options?: {
   loadRuntime?: () => Promise<EmbeddedToolRuntime>;
   llmAdapters?: Record<string, EmbeddedLlmAdapter>;
