@@ -1,5 +1,5 @@
-import { expect, it, vi } from "vitest";
-import { createDeferred } from "../../test/helpers/promise.js";
+import { beforeEach, expect, it, vi } from "vitest";
+import { createDeferred, withinTest } from "../../test/helpers/promise.js";
 import {
   loadSessionEntryReadOnly,
   persistSessionTranscriptTurn,
@@ -52,6 +52,11 @@ function createParams(signal: AbortSignal): Parameters<typeof startGatewayEventS
   };
 }
 
+let testSignal: AbortSignal;
+beforeEach(({ signal }) => {
+  testSignal = signal;
+});
+
 it.each(["before startup", "before inherited connection drain"] as const)(
   "cancels auxiliary model work %s",
   async (phase) => {
@@ -65,6 +70,10 @@ it.each(["before startup", "before inherited connection drain"] as const)(
       sessionId: "shutdown-recap",
     };
     const finish = createDeferred();
+    // The recap path reaches completeModel asynchronously, so gate the wait on that
+    // call itself: a wall-clock poll can read zero calls on a loaded runner while the
+    // recap is still in flight. `withinTest` fails only at the test timeout.
+    const completeStarted = createDeferred();
     const prepared = vi.spyOn(sessionObserverModel, "defaultPrepareModel").mockResolvedValue({
       config: {},
       authProfileId: undefined,
@@ -74,17 +83,20 @@ it.each(["before startup", "before inherited connection drain"] as const)(
       agentDir: testState.path("agent"),
       outputTextPolicy: "strict-visible",
     });
-    const complete = vi.spyOn(sessionObserverModel, "defaultCompleteModel").mockImplementation(() =>
-      trackAsyncWork(async () => {
-        await finish.promise;
-        return {
-          text: "Finished.",
-          provider: "test",
-          model: "utility",
-          owner: { kind: "harness", id: "test" },
-        };
-      }),
-    );
+    const complete = vi
+      .spyOn(sessionObserverModel, "defaultCompleteModel")
+      .mockImplementation(() => {
+        completeStarted.resolve();
+        return trackAsyncWork(async () => {
+          await finish.promise;
+          return {
+            text: "Finished.",
+            provider: "test",
+            model: "utility",
+            owner: { kind: "harness", id: "test" },
+          };
+        });
+      });
     let draining: Promise<void> | undefined;
     try {
       runtimeConfigState.value = { agents: { defaults: { utilityModel: "test/utility" } } };
@@ -107,7 +119,8 @@ it.each(["before startup", "before inherited connection drain"] as const)(
         return;
       }
       await connectionWork.track(() => unsubs!.sessionActivitySummaries.ensure(target));
-      await vi.waitFor(() => expect(complete).toHaveBeenCalledOnce());
+      await withinTest(completeStarted.promise, testSignal);
+      expect(complete).toHaveBeenCalledOnce();
       const modelSignal = complete.mock.calls[0]![0].abortSignal!;
       let drained = false;
       draining = connectionWork.drain().then(() => {
