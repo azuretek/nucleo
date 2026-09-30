@@ -127,6 +127,67 @@ function publishPreparedCopy(directory: string): PreparedSqliteReadOnlyLocation 
   return adoptPreparedLocation(location, directory);
 }
 
+/** Destination names an interrupted attempt can leave in a reused staging
+ * directory. Every copy opens its destination exclusively, so a retry has to
+ * clear them before it can create them again. Control files are never listed. */
+const SNAPSHOT_ATTEMPT_ARTIFACTS = [
+  "first",
+  "database.sqlite.partial",
+  "database.sqlite.partial-journal",
+  "database.sqlite.partial-shm",
+  "database.sqlite.partial-wal",
+] as const;
+
+function resetSnapshotStagingDirectory(directory: string): void {
+  for (const name of SNAPSHOT_ATTEMPT_ARTIFACTS) {
+    fs.rmSync(path.join(directory, name), { force: true });
+  }
+}
+
+type ReusedSnapshotStagingSync = {
+  copy: (
+    pathname: string,
+    journalMode: SourceJournalMode,
+    expectedSourceIdentity?: DatabaseFileIdentity,
+  ) => PreparedSqliteReadOnlyLocation;
+  releaseUnpublished: () => void;
+};
+
+/** Every retry of one synchronous read copies into a single private staging
+ * directory, so a source that keeps changing adds no directory per attempt. The
+ * published snapshot owns that directory; a read that never publishes removes it. */
+function createReusedSnapshotStagingSync(
+  stagingRoot: string | undefined,
+): ReusedSnapshotStagingSync {
+  const root = stagingRoot ?? resolvePrivateSqliteSnapshotStagingRoot();
+  let directory: string | undefined;
+  let published = false;
+  return {
+    copy: (pathname, journalMode, expectedSourceIdentity) => {
+      if (directory === undefined) {
+        // The sync allocator already wraps an allocation failure with its
+        // staging-root diagnosis; wrapping it again would nest two copies of it.
+        directory = createSqliteSnapshotStagingDirectorySync(root);
+      }
+      resetSnapshotStagingDirectory(directory);
+      const prepared = createStableReadOnlyCopyInTempDirectory(
+        pathname,
+        journalMode,
+        directory,
+        root,
+        expectedSourceIdentity,
+      );
+      published = true;
+      return prepared;
+    },
+    releaseUnpublished: () => {
+      if (directory !== undefined && !published) {
+        removeTempDirectory(directory);
+      }
+    },
+  };
+}
+
 function createStableReadOnlyCopyInTempDirectory(
   pathname: string,
   journalMode: SourceJournalMode,
