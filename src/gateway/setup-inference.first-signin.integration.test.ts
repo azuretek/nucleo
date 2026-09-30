@@ -417,6 +417,15 @@ it(
           let waiting = await owner.request<WizardNextResult>("wizard.next", {
             sessionId: "before-revocation",
           });
+          // The device flow presents client notes before the confirm prompt, so the
+          // first next can return a note on a loaded runner. Acknowledge the earlier
+          // steps the way the replacement-signin flow above does, until the confirm.
+          while (!waiting.done && waiting.step?.type !== "confirm") {
+            waiting = await owner.request<WizardNextResult>("wizard.next", {
+              sessionId: "before-revocation",
+              answer: { stepId: waiting.step!.id, value: null },
+            });
+          }
           expect(waiting.step?.type).toBe("confirm");
           waiting = await owner.request<WizardNextResult>("wizard.next", {
             sessionId: "before-revocation",
