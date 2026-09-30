@@ -1675,12 +1675,7 @@ describe("gateway server chat", () => {
         });
         expect(sendRes.ok).toBe(true);
 
-        const waitRes = await rpcReq(scopedWs, "agent.wait", {
-          runId: "idem-write-scope-verbose-no-persist",
-          timeoutMs: 1_000,
-        });
-        expect(waitRes.ok).toBe(true);
-        expect(waitRes.payload?.status).toBe("ok");
+        await waitForAgentRunDrained("idem-write-scope-verbose-no-persist");
 
         const sessionStorePath = testState.sessionStorePath;
         if (!sessionStorePath) {
