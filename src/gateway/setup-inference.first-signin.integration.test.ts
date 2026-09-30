@@ -414,24 +414,13 @@ it(
             ...auth,
             sessionId: "before-revocation",
           });
-          let waiting = await owner.request<WizardNextResult>("wizard.next", {
+          // The device flow opens on a client note, the same first step the
+          // abandoned-signin phase above asserts. Leave it unanswered so the wizard
+          // session stays live for the revoked retry to queue behind.
+          const beforeRevocationStep = await owner.request<WizardNextResult>("wizard.next", {
             sessionId: "before-revocation",
           });
-          // The device flow presents client notes before the confirm prompt, so the
-          // first next can return a note on a loaded runner. Acknowledge the earlier
-          // steps the way the replacement-signin flow above does, until the confirm.
-          while (!waiting.done && waiting.step?.type !== "confirm") {
-            waiting = await owner.request<WizardNextResult>("wizard.next", {
-              sessionId: "before-revocation",
-              answer: { stepId: waiting.step!.id, value: null },
-            });
-          }
-          expect(waiting.step?.type).toBe("confirm");
-          waiting = await owner.request<WizardNextResult>("wizard.next", {
-            sessionId: "before-revocation",
-            answer: { stepId: waiting.step!.id, value: true },
-          });
-          expect(waiting).toMatchObject({ done: false, step: { type: "note" } });
+          expect(beforeRevocationStep).toMatchObject({ done: false, step: { type: "note" } });
           const beforeRevocation = [...requests];
           const reached = createDeferredCore();
           const release = createDeferredCore();
