@@ -788,6 +788,44 @@ it("invalidates projected rows when a distinct config matches an in-place edit o
   });
 });
 
+it("invalidates projected rows when a distinct config matches a provenance edit in place on the published one", async () => {
+  await withOpenClawTestState({ scenario: "minimal" }, async () => {
+    const cfg = { agents: { list: [{ id: "main", default: true }] } };
+    replaceSessionEntrySync(
+      { agentId: "main", sessionKey: "agent:main:provenance-in-place" },
+      { sessionId: "provenance-in-place", updatedAt: 1 },
+    );
+    const release = projectionWork.retainSessionListForegroundWork();
+    const projection = await createSessionRowProjection({ cfg, modelCatalog: [] });
+    try {
+      const published = structuredClone(cfg);
+      setConfigResolutionFacts(
+        published,
+        createConfigResolutionFacts([
+          { varName: "UNIT_TEST_AGENT", configPath: "agents.list.0.id" },
+        ]),
+      );
+      setRuntimeConfigSnapshot(published);
+      await projection.ensureMaterialized();
+      expect(projection.dirtyRowCount).toBe(0);
+
+      // A provenance-only edit made in place on the published object changes how rows resolve,
+      // so a distinct object carrying the same facts is a change against the recorded
+      // publication, not a republish: every row must refresh even though the values match.
+      setConfigResolutionFacts(published, createConfigResolutionFacts([]));
+      const next = structuredClone(cfg);
+      setConfigResolutionFacts(next, createConfigResolutionFacts([]));
+      setRuntimeConfigSnapshot(next);
+      expect(projection.dirtyRowCount).toBeGreaterThan(0);
+    } finally {
+      await projection.ensureMaterialized();
+      projection.dispose();
+      release();
+      resetConfigRuntimeState();
+    }
+  });
+});
+
 it("keeps projected rows clean when config.apply rewrites a value-identical config", async () => {
   await withOpenClawTestState({ scenario: "minimal" }, async () => {
     const cfg = { agents: { list: [{ id: "main", default: true }] } };

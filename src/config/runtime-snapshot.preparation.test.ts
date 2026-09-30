@@ -182,6 +182,12 @@ describe("prepared runtime snapshots", () => {
     // Every case is still a publication; only the session change is conditional.
     expect(getRuntimeConfigSnapshotMetadata()?.revision).toBe(2);
     expect(changes).toHaveBeenCalledTimes(emits ? 1 : 0);
+    if (emits) {
+      // Drift from the recorded publication, whether in its values or in its resolution
+      // provenance, is a broad config change: rows built from the earlier publication must be
+      // invalidated, never refreshed as presentation only.
+      expect(changes).toHaveBeenCalledExactlyOnceWith({ all: true, scope: "config" });
+    }
   });
 
   it("withholds a source-only republish only when runtime values and provenance are unchanged", () => {
