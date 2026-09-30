@@ -24,6 +24,7 @@ import { createCodingToolsGatewayCaller } from "./agent-tools.caller.js";
 import { getFinishedSession } from "./bash-process-registry.js";
 import { createRunExit, runtimeManagedRun } from "./bash-tools.exec-runtime.test-support.js";
 import type { BashSandboxConfig } from "./bash-tools.shared.js";
+import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
 import { resetExecSteeringQueueForTest } from "./exec-steering-queue.js";
 import {
   getGatewayToolCallerIdentity,
@@ -1018,7 +1019,7 @@ describe("exec notifyOnExit suppression", () => {
       const outcome = await runBackgroundedExit({ reason: "manual-cancel", stdout });
 
       expect(outcome.status).toBe("failed");
-      expect(enqueueSystemEventWithReceiptMock).not.toHaveBeenCalled();
+      expect(enqueueSystemEventReceiptMock).not.toHaveBeenCalled();
       expect(requestHeartbeatMock).not.toHaveBeenCalled();
     },
   );
