@@ -1,4 +1,3 @@
-// Produces redacted runtime config snapshots for diagnostics and UI surfaces.
 import { isDeepStrictEqual } from "node:util";
 import { sha256Base64Url } from "../infra/crypto-digest.js";
 import { clearExecutablePathCache } from "../infra/executable-path.js";
@@ -24,6 +23,7 @@ import {
   getRuntimeConfigCapture,
 } from "./runtime-config-capture-state.js";
 import { configSnapshotsMatch, stableConfigStringify } from "./runtime-config-snapshot-match.js";
+import { runtimeSessionChangeScope } from "./runtime-session-changes.js";
 import type { ConfigFileSnapshot, OpenClawConfig } from "./types.js";
 
 export type RuntimeConfigSnapshotRefreshOptions = {
@@ -47,20 +47,8 @@ export type ConfigWriteAfterWrite =
   | { mode: "none"; reason: string };
 
 export type ConfigWriteFollowUp =
-  | {
-      mode: "auto";
-      requiresRestart: false;
-    }
-  | {
-      mode: "none";
-      reason: string;
-      requiresRestart: false;
-    }
-  | {
-      mode: "restart";
-      reason: string;
-      requiresRestart: true;
-    };
+  | (Exclude<ConfigWriteAfterWrite, { mode: "restart" }> & { requiresRestart: false })
+  | (Extract<ConfigWriteAfterWrite, { mode: "restart" }> & { requiresRestart: true });
 
 export function resolveConfigWriteAfterWrite(
   afterWrite?: ConfigWriteAfterWrite,
@@ -219,6 +207,7 @@ function publishRuntimeConfigSnapshot(
 ): void {
   const metadata = createRuntimeConfigSnapshotMetadata(config, sourceConfig);
   const facts = serializeConfigResolutionFacts(config);
+  const scope = runtimeSessionChangeScope(runtimeConfigSnapshot, config);
   // Compare with what the previous publication recorded, since its object may have been edited
   // in place; withhold only a distinct object matching that record, or a proven no-op.
   const matchesPublished =
@@ -232,7 +221,7 @@ function publishRuntimeConfigSnapshot(
   runtimeConfigSnapshotMetadata = metadata;
   runtimeConfigPublishedFacts = facts;
   if (!valuesUnchanged && !matchesPublished) {
-    sessionChanges.emit({ all: true, scope: "config" });
+    sessionChanges.emit({ all: true, scope });
   }
 }
 
