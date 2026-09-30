@@ -323,12 +323,9 @@ function createReusedSnapshotStagingSync(
   return {
     copy: (pathname, journalMode, expectedSourceIdentity) => {
       if (directory === undefined) {
-        try {
-          directory = createSqliteSnapshotStagingDirectorySync(root);
-        } catch (error) {
-          // The sync allocator adds no diagnosis; the raw-copy path owns this one.
-          throw sqliteSnapshotStagingError(root, error, true);
-        }
+        // The sync allocator already wraps an allocation failure with its
+        // staging-root diagnosis; wrapping it again would nest two copies of it.
+        directory = createSqliteSnapshotStagingDirectorySync(root);
       }
       resetSnapshotStagingDirectory(directory);
       const prepared = createStableReadOnlyCopyInTempDirectory(
