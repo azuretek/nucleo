@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { sha256Base64Url } from "../infra/crypto-digest.js";
 import { clearExecutablePathCache } from "../infra/executable-path.js";
+import { prepareRuntimePluginsConfig } from "../plugins/config-state.js";
 import { sessionChanges } from "../sessions/session-row-changes.js";
 import { isDeeplyFrozenPlainData } from "../shared/immutable-data.js";
 import {
@@ -231,6 +232,7 @@ function publishRuntimeConfigSnapshot(
     runtimeConfigSnapshot !== config &&
     runtimeConfigSnapshotMetadata?.fingerprint === metadata.fingerprint &&
     isDeepStrictEqual(runtimeConfigPublishedFacts, facts);
+  prepareRuntimePluginsConfig(config);
   runtimeConfigSnapshotGeneration += 1;
   clearExecutablePathCache();
   runtimeConfigSnapshot = config;
@@ -352,6 +354,7 @@ export function setRuntimeConfigSourceSnapshotIfCurrent(params: {
 export function resetConfigRuntimeState(options: { preserveConfigEnv?: boolean } = {}): void {
   runtimeConfigSnapshotGeneration += 1;
   clearExecutablePathCache();
+  prepareRuntimePluginsConfig(null);
   runtimeConfigSnapshot = null;
   runtimeConfigSourceSnapshot = null;
   runtimeConfigSnapshotMetadata = null;
