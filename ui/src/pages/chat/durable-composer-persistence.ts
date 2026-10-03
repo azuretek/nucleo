@@ -56,14 +56,15 @@ export function durableComposerScopeIdentity(scope: DurableComposerDraftScope): 
 
 export function reportDurableComposerStorageError(
   scope: DurableComposerDraftScope,
-  onStorageError: () => void,
+  onStorageError: (reason?: "payload-too-large") => void,
+  reason?: "payload-too-large",
 ) {
-  const owner = durableComposerOwnerKey(scope);
+  const owner = JSON.stringify([durableComposerOwnerKey(scope), reason ?? "storage-failed"]);
   if (reportedStorageOwners.has(owner)) {
     return;
   }
   reportedStorageOwners.add(owner);
-  onStorageError();
+  onStorageError(reason);
 }
 
 export function chatAttachmentDraftSignature(
@@ -194,7 +195,7 @@ export class DurableChatComposerPersistence {
   private restoredScopeKey = "";
 
   constructor(
-    private readonly onStorageError: () => void,
+    private readonly onStorageError: (reason?: "payload-too-large") => void,
     private readonly onConflict: () => void,
   ) {}
 
