@@ -260,11 +260,6 @@ export type LobsterReplayRequest = { provider: string; command: string };
 
 const LLM_COMMANDS = new Set(["llm.invoke", "llm_task.invoke"]);
 
-/** True for a non-null, non-array object, so field access is safe without a cast. */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 /**
  * Whether a stage explicitly chose the embedded route, by its own provider
  * argument or by LOBSTER_LLM_PROVIDER in its FINAL environment (process, then
