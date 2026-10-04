@@ -44,6 +44,12 @@ export type LobsterRunnerParams = {
   cwd: string;
   timeoutMs: number;
   maxStdoutBytes: number;
+  /**
+   * The live gateway request's abort signal. Linked into the runner's controller,
+   * so Lobster's state-lock waits and resume-state consumption observe request
+   * cancellation instead of running to completion after the client is gone.
+   */
+  signal?: AbortSignal;
 };
 
 export type LobsterRunner = {
@@ -383,6 +389,7 @@ function wrapLlmCommands(
   base: LobsterRegistry,
   authorizeReplay: (request: LobsterReplayRequest) => Promise<void>,
   onStage: (stage: LobsterLlmStage) => void,
+  beforeStage: () => Promise<void>,
 ): LobsterRegistry {
   const drain = async (
     result: { output?: AsyncIterable<unknown> } & Record<string, unknown>,
@@ -405,6 +412,7 @@ function wrapLlmCommands(
       return {
         ...command,
         async run({ input, args, ctx }) {
+          await beforeStage();
           const env = ctx.env ?? {};
           if (embeddedRouteWasRequested(args, env)) {
             const result = await command.run({
@@ -464,6 +472,9 @@ export function createEmbeddedLobsterRunner(options?: {
       runtimePromise ??= loadRuntime();
       const runtime = await runtimePromise;
       let registry: LobsterRegistry | undefined;
+      // Re-runs the resumed checkpoint's producer check at each downstream LLM
+      // dispatch boundary; undefined for a fresh run.
+      let reauthorizeResume: (() => Promise<void>) | undefined;
       let checkpoints:
         | {
             authorize: (provenance: LobsterCheckpointProvenance | undefined) => Promise<void>;
@@ -484,12 +495,17 @@ export function createEmbeddedLobsterRunner(options?: {
         }
         const trace: LlmStageTrace = { stages: [] };
         checkpoints = { authorize: authorizeCheckpoint, trace };
-        registry = wrapLlmCommands(runtime.createDefaultRegistry(), authorizeReplay, (stage) => {
-          trace.stages.push(stage);
-          if (stage.provider === "embedded") {
-            trace.caller = mergeCaller(trace.caller, describeCaller());
-          }
-        });
+        registry = wrapLlmCommands(
+          runtime.createDefaultRegistry(),
+          authorizeReplay,
+          (stage) => {
+            trace.stages.push(stage);
+            if (stage.provider === "embedded") {
+              trace.caller = mergeCaller(trace.caller, describeCaller());
+            }
+          },
+          async () => await reauthorizeResume?.(),
+        );
       }
       return await withTimeout(params.timeoutMs, async (signal) => {
         const ctx = createEmbeddedToolContext(params, signal, options?.llmAdapters);
