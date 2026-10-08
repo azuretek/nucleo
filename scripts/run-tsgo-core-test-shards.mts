@@ -2,7 +2,8 @@
 
 // Run bounded test graphs in fresh processes so one shard's checker heap cannot
 // accumulate while the next shard loads.
-import fs from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { CoreTsgoGraph } from "./check-tsgo-core-boundary.mts";
 import { isDirectRunUrl } from "./lib/direct-run.mjs";
@@ -17,6 +18,10 @@ import {
   selectChangedTsgoCoreTestShards,
   selectDistDependentTsgoCoreTestConfigs,
   TSGO_CORE_TEST_DIST_DEPENDENT_FILES,
+  selectChangedCiTsgoGraphs,
+  resolveChangedCiTsgoInputs,
+  resolveCiTsgoGraphs,
+  TSGO_CI_GRAPHS,
   TSGO_CORE_TEST_SHARDS,
   selectTsgoCoreTestStripe,
 } from "./lib/tsgo-core-test-shards.mts";
@@ -71,7 +76,7 @@ async function runTsgoCoreTestShards(
   const leaves: string[] = [];
   // The batch owns outputs once; its existing compiler concurrency stays intact
   // without children waiting to reacquire their parent's lock.
-  return await withDistArtifactOwnership(repoRoot, async () => {
+  const resultCode = await withDistArtifactOwnership(repoRoot, async () => {
     // A shard owning a dist-dependent test resolves `../../dist/*.js` imports, so
     // build the typed runtime dist entries first or those imports report TS2307.
     // Gate on the file existing: synthetic fixtures select the full shard list
@@ -79,7 +84,7 @@ async function runTsgoCoreTestShards(
     if (
       selectDistDependentTsgoCoreTestConfigs(shards).length > 0 &&
       TSGO_CORE_TEST_DIST_DEPENDENT_FILES.some((entry) =>
-        fs.existsSync(path.join(repoRoot, entry.file)),
+        existsSync(path.join(repoRoot, entry.file)),
       )
     ) {
       const buildCode = await buildTsgoCoreTestTypedRuntimeDist(env, repoRoot);
@@ -87,7 +92,10 @@ async function runTsgoCoreTestShards(
         return buildCode;
       }
     }
-    const queue = [...shards];
+    const queue = executionGraphs.map((shard, index) => ({
+      ...shard,
+      evidenceId: `${id}:${index}`,
+    }));
     let failureCode = 0;
     let stopped = false;
     const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
