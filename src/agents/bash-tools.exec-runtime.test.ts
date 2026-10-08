@@ -7,14 +7,10 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { Type } from "typebox";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { MAX_SAFE_TIMEOUT_DELAY_MS } from "../../packages/gateway-client/src/timeouts.js";
 import { createDeferred } from "../../test/helpers/promise.js";
 import {
   onInternalDiagnosticEvent,
-  resetDiagnosticEventsForTest,
-  type DiagnosticEventMetadata,
   type DiagnosticExecProcessCompletedEvent,
-  type DiagnosticEventPayload,
 } from "../infra/diagnostic-events.js";
 import type { GatewayActiveWorkInspectors } from "../infra/gateway-active-work.js";
 import { resetSystemEventsForTest } from "../infra/system-events.js";
@@ -65,6 +61,7 @@ vi.mock("../process/supervisor/index.js", () => ({
 let markBackgrounded: typeof import("./bash-process-registry.js").markBackgrounded;
 let getActiveBackgroundExecSessionCount: typeof import("./bash-process-registry.js").getActiveBackgroundExecSessionCount;
 let listRunningSessions: typeof import("./bash-process-registry.js").listRunningSessions;
+let acknowledgeNotifyOnExit: typeof import("./bash-process-registry.js").acknowledgeNotifyOnExit;
 let resetProcessRegistryForTests: typeof import("./bash-process-registry.test-support.js").resetProcessRegistryForTests;
 let runExecProcess: typeof import("./bash-tools.exec-runtime.js").runExecProcess;
 let prepareGatewaySuspend: typeof import("../infra/gateway-suspend-coordinator.js").prepareGatewaySuspend;
@@ -72,8 +69,12 @@ let resetGatewaySuspendCoordinatorForLifecycleRestart: typeof import("../infra/g
 let resumeGatewaySuspend: typeof import("../infra/gateway-suspend-coordinator.js").resumeGatewaySuspend;
 
 beforeAll(async () => {
-  ({ getActiveBackgroundExecSessionCount, listRunningSessions, markBackgrounded } =
-    await import("./bash-process-registry.js"));
+  ({
+    acknowledgeNotifyOnExit,
+    getActiveBackgroundExecSessionCount,
+    listRunningSessions,
+    markBackgrounded,
+  } = await import("./bash-process-registry.js"));
   ({ resetProcessRegistryForTests } = await import("./bash-process-registry.test-support.js"));
   ({ runExecProcess } = await import("./bash-tools.exec-runtime.js"));
   ({
