@@ -1,0 +1,32 @@
+diff --git a/src/agents/subagents/registry/subagent-orphan-recovery.restart-integration.test.ts b/src/agents/subagents/registry/subagent-orphan-recovery.restart-integration.test.ts
+index 4d06008dc17..7251875f7a7 100644
+--- a/src/agents/subagents/registry/subagent-orphan-recovery.restart-integration.test.ts
++++ b/src/agents/subagents/registry/subagent-orphan-recovery.restart-integration.test.ts
+@@ -328,8 +328,25 @@ describe("subagent orphan recovery — faithful restart path", () => {
+           }
+           if (source === "retired wait retry") {
+             vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+-            oldWait.reject(new Error("gateway request timeout"));
+-            await vi.advanceTimersByTimeAsync(0);
++            // The retry timer is scheduled only after the rejected wait's recovery
++            // path has settled its asynchronous worker session reads. Wait on that
++            // scheduling signal instead of counting zero-time advances, which a
++            // loaded shard can exhaust before the reads finish.
++            const retryScheduled = createDeferred();
++            const fakeSetTimeout = globalThis.setTimeout;
++            const setTimeoutSpy = vi
++              .spyOn(globalThis, "setTimeout")
++              .mockImplementation((...args: Parameters<typeof setTimeout>) => {
++                const timer = fakeSetTimeout(...args);
++                retryScheduled.resolve();
++                return timer;
++              });
++            try {
++              oldWait.reject(new Error("gateway request timeout"));
++              await retryScheduled.promise;
++            } finally {
++              setTimeoutSpy.mockRestore();
++            }
+             expect(vi.getTimerCount()).toBeGreaterThan(0);
+             rotateAgentEventLifecycleGeneration();
+             await vi.advanceTimersByTimeAsync(1_000);
