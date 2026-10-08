@@ -22,7 +22,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, "nucleo.json"), "utf8"));
 const NUCLEO = join(HERE, "nucleo.mjs");
-const RUNS = join(ROOT, "logs", "runs");
+// ★ Run records and stage logs belong where the manifest says logs live, not inside the
+// checkout: a record carries the host path of its own log, and a host path must never reach a
+// published tree. The host-local override names this host log root.
+const LOG_ROOT = MANIFEST.logs || join(ROOT, "logs");
+const RUNS = join(LOG_ROOT, "runs");
 
 const argv = process.argv.slice(2);
 const CMD = argv.find((a) => !a.startsWith("-")) ?? "status";
@@ -151,7 +155,7 @@ function pipeline() {
     result: "running",
   };
   const recordPath = join(RUNS, id + ".json");
-  const logPath = join(ROOT, "logs", "pipeline-" + id + ".log");
+  const logPath = join(LOG_ROOT, "pipeline-" + id + ".log");
 
   console.log("run " + id + "  pin " + MANIFEST.pinnedTag + "  distro " + now.distro.slice(0, 12));
   for (const stage of stages) {
