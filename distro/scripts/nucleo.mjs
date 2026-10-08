@@ -152,6 +152,8 @@ function sync() {
       "pinned tag " + MANIFEST.pinnedTag + " is not present. Fetch it before syncing.",
     );
   log("base commit: " + tag.out.slice(0, 12));
+  // ★ Capture the branch tip we are about to rebuild from, because our own paths can only come from it.
+  const priorTip = gitTry(["rev-parse", MANIFEST.fork.remote + "/" + MANIFEST.distroBranch]);
   git(["checkout", "-q", "-B", MANIFEST.distroBranch, MANIFEST.pinnedTag]);
 
   // ★ Replay COMMIT BY COMMIT rather than applying one pre-computed diff per branch.
@@ -293,6 +295,32 @@ function sync() {
   const dupes = duplicateTopLevelDeclarations();
   for (const d of dupes) appendFileSync(file, "DUPLICATE-DECLARATION " + d + "\n");
   const head = sha(MANIFEST.distroBranch);
+  // ★ Our own paths live only on this branch, never in the pin, so the reset above would drop
+  // them: the tooling that runs this assembly lives here, and so does the one workflow the fork
+  // keeps. Take each from the branch tip captured above and record the carry. This is the mirror
+  // of the pin-owned adaptation below, with the ownership reversed.
+  let carriedCount = 0;
+  if (priorTip.ok && priorTip.out) {
+    for (const own of MANIFEST.forkOwnedPaths || []) {
+      const taken = gitTry(["checkout", priorTip.out, "--", own]);
+      if (!taken.ok) {
+        appendFileSync(file, "carry-miss " + own + "\n");
+        continue;
+      }
+      const changed = spawnSync("git", ["diff", "--cached", "--quiet", "--", own], {
+        cwd: MANIFEST.checkout,
+      });
+      if (changed.status !== 0) {
+        spawnSync(
+          "git",
+          ["-c", "core.editor=true", "commit", "-q", "-m", "carry: keep our own path " + own],
+          { cwd: MANIFEST.checkout, encoding: "utf8" },
+        );
+        appendFileSync(file, "carry " + own + "\n");
+        carriedCount += 1;
+      }
+    }
+  }
   // ★ Ledgers and baselines belong to upstream, not to a patch. When a patch carries an older copy
   // of one, that copy wins the file and every entry upstream added since our base disappears, so a
   // ratchet reads a stale allowance and reports failures against code that is fine: ten files came
@@ -323,6 +351,8 @@ function sync() {
       resolvedHunks +
       " adaptations=" +
       adaptCount +
+      " carried=" +
+      carriedCount +
       " our_fix_wins=" +
       resolvedOurs +
       " duplicate_changes_skipped=" +
