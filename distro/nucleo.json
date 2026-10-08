@@ -32,19 +32,41 @@
       "n": 2,
       "pr": 163964,
       "branch": "fix/image-draft-snapshot",
-      "subject": "image drafts survive a temporary file disappearing"
+      "subject": "image drafts survive a temporary file disappearing",
+      "behaviour": "image drafts survive a temporary file disappearing",
+      "behaviourTests": [
+        "ui/src/pages/chat/attachment-payload-snapshot.test.ts",
+        "ui/src/pages/chat/durable-composer-storage-warning.test.ts"
+      ]
     },
     {
       "n": 3,
       "pr": 151441,
       "branch": "fix/chat-send-reserved-marker",
-      "subject": "chat.send after a reconnect is no longer rejected"
+      "subject": "chat.send after a reconnect is no longer rejected",
+      "behaviour": "chat.send after a reconnect is no longer rejected",
+      "behaviourTests": [
+        "src/gateway/server-methods/chat-send-request.test.ts",
+        "src/gateway/server/ws-connection/handshake-auth-helpers.linux.test.ts",
+        "src/utils/message-channel.test.ts"
+      ]
     },
     {
       "n": 4,
       "pr": 148581,
       "branch": "fix/openai-nano-platform-route",
-      "subject": "gpt-5.4-nano no longer rejects keys as incompatible"
+      "subject": "gpt-5.4-nano no longer rejects keys as incompatible",
+      "behaviour": "gpt-5.4-nano no longer rejects keys as incompatible",
+      "behaviourTests": [
+        "extensions/openai/catalog-expectations.test-support.ts",
+        "extensions/openai/model-route-contract.test.ts",
+        "extensions/openai/openai-provider-nano-route.test.ts",
+        "extensions/openai/openai-provider.test.ts",
+        "src/agents/runtime-plan/prepare-auth.nano-platform-route.test.ts",
+        "src/agents/runtime-plan/prepare-auth.test.ts",
+        "src/commands/auth-choice.model-check.test.ts",
+        "src/commands/models/list.status.test.ts"
+      ]
     },
     {
       "n": 5,
@@ -56,19 +78,58 @@
       "n": 6,
       "pr": 152205,
       "branch": "fix/exec-completion-steering",
-      "subject": "background-exec completions steer into busy sessions"
+      "subject": "background-exec completions steer into busy sessions",
+      "behaviour": "background-exec completions steer into busy sessions",
+      "behaviourTests": [
+        "src/agents/bash-process-registry.test.ts",
+        "src/agents/bash-tools.exec-runtime.settlement.test.ts",
+        "src/agents/bash-tools.exec-runtime.test.ts",
+        "src/agents/bash-tools.notify-on-exit-ack.test.ts",
+        "src/agents/code-mode.result-budget.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-context-advancement.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-build.provenance.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-error.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.admission.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.exec-steering.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.retention.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.steering.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-session-replay.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-stream-settle.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-yield-handoff.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt.media-hint-cache-boundary.test.ts",
+        "src/agents/exec-steering-queue.test.ts",
+        "src/auto-reply/reply/dispatch-from-config.exec-steering-settlement.test.ts",
+        "src/auto-reply/reply/session-reset-cleanup.test.ts",
+        "test/e2e/qa-lab/runtime/exec-completion-steering.product-proof.e2e.test.ts",
+        "test/plugins/native-reasoning-subscription.test.ts",
+        "test/tsconfig/tsconfig.core.test.agents-root.json",
+        "test/tsconfig/tsconfig.core.test.agents-tools.json"
+      ]
     },
     {
       "n": 7,
       "pr": 161344,
       "branch": "fix/lobster-llm-adapter-current",
-      "subject": "Lobster runs native LLM stages in embedded workflows"
+      "subject": "Lobster runs native LLM stages in embedded workflows",
+      "behaviour": "Lobster runs native LLM stages in embedded workflows",
+      "behaviourTests": [
+        "extensions/lobster/src/lobster-checkpoint-provenance.test.ts",
+        "extensions/lobster/src/lobster-gateway-scope.test.ts",
+        "extensions/lobster/src/lobster-runner.test.ts",
+        "extensions/lobster/src/lobster-tool.test.ts"
+      ]
     },
     {
       "n": 8,
       "pr": 162160,
       "branch": "fix/gateway-startup-health-cold-worker-cache",
-      "subject": "bound a cold Vitest worker build"
+      "subject": "bound a cold Vitest worker build",
+      "behaviour": "bound a cold Vitest worker build",
+      "behaviourTests": [
+        "test/scripts/run-vitest.test.ts"
+      ]
     },
     {
       "n": 9,
