@@ -119,5 +119,9 @@
   ],
   "workBranch": "distro/<pin>",
   "devBuildNumber": "the commit count from the pinned tag to the work branch; the assembly host derives it, and the build host accepts it as NUCLEO_BUILD_NUMBER rather than counting a shallow tree",
-  "current": "0.0.0"
+  "current": "0.0.0",
+  "forkOwnedPaths": [
+    "distro",
+    ".github/workflows/distro.yml"
+  ]
 }
