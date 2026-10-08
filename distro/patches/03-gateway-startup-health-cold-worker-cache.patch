@@ -1,0 +1,457 @@
+diff --git a/scripts/lib/ci-node-test-plan.mts b/scripts/lib/ci-node-test-plan.mts
+index a47fdce8cad..88c22061737 100644
+--- a/scripts/lib/ci-node-test-plan.mts
++++ b/scripts/lib/ci-node-test-plan.mts
+@@ -300,8 +300,15 @@ const EXTRA_LARGE_NODE_TEST_RUNNER = "blacksmith-32vcpu-ubuntu-2404";
+ // Keep enough CPU here to avoid spending minutes in Vitest imports on 4 vCPU.
+ const GATEWAY_STARTUP_CORE_RUNNER = DEFAULT_NODE_TEST_RUNNER;
+ // Fail the known warm-cache startup stall at its existing scoped deadline.
++// A cold worker cache compiles a whole runtime generation before the first test
++// file runs: run 36776931046 spent 55460ms in `[vitest-workers] prepared` with
++// nothing on the streams the watchdog counts, so the 60s scoped deadline killed
++// the shard (exit 143, no assertion) while it was still preparing. The admitted
++// preparation therefore gets the repo's long-running window; 60000ms still bounds
++// the test phase this override exists to fail (#162136).
+ const GATEWAY_STARTUP_HEALTH_RUNTIME_ENV = {
+   OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS: "60000",
++  OPENCLAW_VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_MS: "300000",
+ };
+ // The first embedded-agent file owns 157 serial tests and can stay quiet for
+ // more than five minutes on a cold GitHub-hosted fork runner. Keep the outer
+diff --git a/scripts/lib/vitest-process-env.mts b/scripts/lib/vitest-process-env.mts
+index f9d2d911892..410fffe63e6 100644
+--- a/scripts/lib/vitest-process-env.mts
++++ b/scripts/lib/vitest-process-env.mts
+@@ -61,6 +61,7 @@ export function resolveSharedVitestCompilerEnv(
+     "OPENCLAW_NODE_TEST_VITEST_ARGS_JSON",
+     "OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS",
+     "OPENCLAW_VITEST_NO_OUTPUT_HEARTBEAT_MS",
++    "OPENCLAW_VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_MS",
+   ]);
+   // Compilation has one owner before any group requests it. Only scheduling
+   // facts may differ; loaders, Node flags and source-build inputs must agree.
+@@ -99,6 +100,8 @@ export const DEFAULT_LONG_RUNNING_VITEST_NO_OUTPUT_TIMEOUT_MS = 300_000;
+ export const DEFAULT_EXTRA_LONG_RUNNING_VITEST_NO_OUTPUT_TIMEOUT_MS = 2_400_000;
+ const VITEST_NO_OUTPUT_TIMEOUT_ENV_KEY = "OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS";
+ const VITEST_NO_OUTPUT_HEARTBEAT_ENV_KEY = "OPENCLAW_VITEST_NO_OUTPUT_HEARTBEAT_MS";
++const VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_ENV_KEY =
++  "OPENCLAW_VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_MS";
+ const GATEWAY_VITEST_CONFIG = "test/vitest/vitest.gateway.config.ts";
+ export const VITEST_CONFIG_NO_OUTPUT_TIMEOUT_MS = new Map([
+   ["test/vitest/vitest.e2e.config.ts", DEFAULT_LONG_RUNNING_VITEST_NO_OUTPUT_TIMEOUT_MS],
+@@ -195,6 +198,24 @@ export function resolveVitestNoOutputHeartbeatMs(
+   return parsePositiveInt(env[VITEST_NO_OUTPUT_HEARTBEAT_ENV_KEY]);
+ }
+ 
++/**
++ * Reads the longer no-output window that applies while a borrowed worker
++ * preparation is in flight, if one is configured. A cold worker cache compiles a
++ * whole runtime generation before Vitest writes its first byte, and that compile
++ * reports progress only on the runner's own stderr, so the scoped test-silence
++ * deadline cannot be used to bound it (#162136). Unset keeps the scoped deadline.
++ */
++export function resolveVitestPreparationTimeoutMs(
++  env: NodeJS.ProcessEnv = process.env,
++): number | null {
++  const configured = parsePositiveInt(env[VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_ENV_KEY]);
++  const scoped = resolveVitestNoOutputTimeoutMs(env);
++  if (configured === null || scoped === null) {
++    return configured;
++  }
++  return Math.max(configured, scoped);
++}
++
+ /**
+  * Adds default watchdog env for non-watch Vitest runs.
+  */
+diff --git a/scripts/lib/vitest-worker-run.mts b/scripts/lib/vitest-worker-run.mts
+index 9a12c970e95..eb082ed886d 100644
+--- a/scripts/lib/vitest-worker-run.mts
++++ b/scripts/lib/vitest-worker-run.mts
+@@ -14,6 +14,14 @@ import {
+ } from "./vitest-worker-artifacts.mts";
+ import { useVitestWorkerCache } from "./vitest-worker-cache-policy.mts";
+ 
++/**
++ * The two observable edges of a borrowed worker preparation. Everything between
++ * them is the runner compiling a generation, which writes to the runner's own
++ * stderr and never to the borrowed child's streams, so a watchdog that only
++ * counts child output has to be told both edges (#162136).
++ */
++export type VitestWorkerPreparationState = "admitted" | "ready";
++
+ const root = fileURLToPath(new URL("../../", import.meta.url));
+ 
+ function createVitestWorkerDirectory(env: NodeJS.ProcessEnv) {
+@@ -139,7 +147,7 @@ export function createVitestWorkerRun(
+     borrow<T>(
+       child: ChildProcess,
+       completion: Promise<T>,
+-      onPreparationProgress?: () => void,
++      onPreparationStateChange?: (state: VitestWorkerPreparationState) => void,
+     ): Promise<T> {
+       let request: Promise<void> | undefined;
+       const onMessage = (message: unknown) => {
+@@ -154,7 +162,7 @@ export function createVitestWorkerRun(
+             if (disposal) {
+               throw new Error("Compiled subprocess owner is closing");
+             }
+-            onPreparationProgress?.();
++            onPreparationStateChange?.("ready");
+           } catch (error) {
+             reply = { type: VITEST_WORKER_PREPARE_REPLY, error: String(error) };
+           }
+@@ -164,10 +172,12 @@ export function createVitestWorkerRun(
+             });
+           }
+         })();
+-        // Only accepted admission and verified readiness count as progress.
+-        // Duplicate IPC and the compiler's intermediate output cannot renew it.
++        // Only accepted admission and verified readiness are reported. The compile
++        // between them is silent on this child's streams by design and is bounded by
++        // the preparation deadline instead, so neither edge may be renewed by
++        // duplicate IPC or by the compiler's intermediate output.
+         if (!disposal) {
+-          onPreparationProgress?.();
++          onPreparationStateChange?.("admitted");
+         }
+       };
+       child.on("message", onMessage);
+diff --git a/scripts/run-vitest.mts b/scripts/run-vitest.mts
+index 79141960d12..32c3728be28 100644
+--- a/scripts/run-vitest.mts
++++ b/scripts/run-vitest.mts
+@@ -38,6 +38,7 @@ import {
+   resolveRunVitestSpawnEnv,
+   resolveVitestNoOutputTimeoutMs,
+   resolveVitestNoOutputHeartbeatMs,
++  resolveVitestPreparationTimeoutMs,
+   resolveVitestConfigArg,
+   normalizeVitestConfigPath,
+   matchesVitestConfigPath,
+@@ -616,6 +617,13 @@ export function resolveImplicitVitestArgs(argv: string[], cwd = process.cwd()):
+ export function installVitestNoOutputWatchdog(params: {
+   streams?: Array<WatchdogStream | null>;
+   timeoutMs: number | null;
++  /**
++   * Bound used while an admitted worker preparation is in flight. A cold cache
++   * compiles a whole generation before Vitest writes its first byte and that
++   * compile is silent on the child's streams, so it must not be charged to the
++   * scoped test-silence deadline (#162136). Falls back to `timeoutMs`.
++   */
++  preparationTimeoutMs?: number | null;
+   heartbeatMs?: number | null;
+   forceKillAfterMs?: number;
+   log?: (message: string) => void;
+@@ -623,10 +631,20 @@ export function installVitestNoOutputWatchdog(params: {
+   onForceKill?: () => void;
+   setTimeoutFn?: typeof setTimeout;
+   clearTimeoutFn?: typeof clearTimeout;
+-}): { recordActivity: () => void; teardown: () => void } {
++}): {
++  recordActivity: () => void;
++  beginPreparation: () => void;
++  endPreparation: () => void;
++  teardown: () => void;
++} {
+   const timeoutMs = params.timeoutMs;
+   if (!timeoutMs || timeoutMs <= 0) {
+-    return { recordActivity: () => {}, teardown: () => {} };
++    return {
++      recordActivity: () => {},
++      beginPreparation: () => {},
++      endPreparation: () => {},
++      teardown: () => {},
++    };
+   }
+ 
+   const setTimeoutFn = params.setTimeoutFn ?? setTimeout;
+@@ -645,6 +663,13 @@ export function installVitestNoOutputWatchdog(params: {
+   let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+   let silentForMs = 0;
+   let timedOut = false;
++  let preparing = false;
++  // Preparation never gets a shorter window than the scoped deadline it replaces.
++  const preparationTimeoutMs =
++    params.preparationTimeoutMs && params.preparationTimeoutMs > 0
++      ? Math.max(params.preparationTimeoutMs, timeoutMs)
++      : timeoutMs;
++  const activeTimeoutMs = () => (preparing ? preparationTimeoutMs : timeoutMs);
+ 
+   const clearHeartbeatTimer = () => {
+     if (heartbeatTimer !== null) {
+@@ -678,7 +703,7 @@ export function installVitestNoOutputWatchdog(params: {
+       }
+       silentForMs += heartbeatMs;
+       params.log?.(`[vitest] still running with no output for ${silentForMs}ms.`);
+-      if (silentForMs + heartbeatMs < timeoutMs) {
++      if (silentForMs + heartbeatMs < activeTimeoutMs()) {
+         scheduleHeartbeatTimer();
+       }
+     }, heartbeatMs);
+@@ -691,6 +716,9 @@ export function installVitestNoOutputWatchdog(params: {
+     clearSilenceTimer();
+     silentForMs = 0;
+     scheduleHeartbeatTimer();
++    // Bind the deadline this timer was armed with so a later phase change cannot
++    // make the terminating message disagree with the timeout that actually fired.
++    const deadlineMs = activeTimeoutMs();
+     silenceTimer = setTimeoutFn(() => {
+       if (!active) {
+         return;
+@@ -698,7 +726,7 @@ export function installVitestNoOutputWatchdog(params: {
+       clearHeartbeatTimer();
+       timedOut = true;
+       params.log?.(
+-        `[vitest] no output for ${timeoutMs}ms; terminating stalled Vitest process group.`,
++        `[vitest] no output for ${deadlineMs}ms; terminating stalled Vitest process group.`,
+       );
+       if (forceKillAfterMs > 0) {
+         clearForceKillTimer();
+@@ -713,7 +741,7 @@ export function installVitestNoOutputWatchdog(params: {
+         }, forceKillAfterMs);
+       }
+       params.onTimeout?.();
+-    }, timeoutMs);
++    }, deadlineMs);
+   };
+ 
+   const handleActivity = () => {
+@@ -724,6 +752,34 @@ export function installVitestNoOutputWatchdog(params: {
+     resetSilenceTimer();
+   };
+ 
++  // Admission and readiness are the only two edges of a borrowed worker
++  // preparation. The compile between them owns the preparation deadline so a cold
++  // build cannot be reported as a stalled test run (#162136).
++  const beginPreparation = () => {
++    // Mirrors output activity's post-timeout guard: a preparation that is only
++    // admitted after the silence deadline already fired must not clear the
++    // pending force-kill fallback for a child that ignored SIGTERM.
++    if (!active || timedOut || preparing) {
++      return;
++    }
++    preparing = true;
++    clearForceKillTimer();
++    if (preparationTimeoutMs > timeoutMs) {
++      params.log?.(
++        `[vitest] worker preparation admitted; no-output deadline extended to ${preparationTimeoutMs}ms.`,
++      );
++    }
++    resetSilenceTimer();
++  };
++
++  const endPreparation = () => {
++    if (!active || timedOut || !preparing) {
++      return;
++    }
++    preparing = false;
++    resetSilenceTimer();
++  };
++
+   const listeners = streams.map((stream) => {
+     const handler = () => {
+       handleActivity();
+@@ -736,6 +792,8 @@ export function installVitestNoOutputWatchdog(params: {
+ 
+   return {
+     recordActivity: handleActivity,
++    beginPreparation,
++    endPreparation,
+     teardown() {
+       if (!active) {
+         return;
+@@ -858,9 +916,14 @@ export function spawnWatchedVitestProcess({
+     forceSignal: "SIGKILL",
+     forceSignalDelayMs: 100,
+   });
++  const noOutputTimeoutMs = resolveVitestNoOutputTimeoutMs(env);
+   const noOutputWatchdog = installVitestNoOutputWatchdog({
+     streams: [child.stdout, child.stderr],
+-    timeoutMs: resolveVitestNoOutputTimeoutMs(env),
++    timeoutMs: noOutputTimeoutMs,
++    // A cold worker cache compiles a generation before Vitest prints anything, so a
++    // shard whose scoped deadline is below a cold build declares the longer window
++    // that bounds its admitted preparation instead (#162136).
++    preparationTimeoutMs: resolveVitestPreparationTimeoutMs(env),
+     heartbeatMs: resolveVitestNoOutputHeartbeatMs(env),
+     log: (message) => {
+       console.error(message);
+@@ -913,7 +976,13 @@ export function spawnWatchedVitestProcess({
+   return {
+     child,
+     completion: workerRun
+-      ? workerRun.borrow(child, completion, noOutputWatchdog.recordActivity)
++      ? workerRun.borrow(child, completion, (state) => {
++          if (state === "admitted") {
++            noOutputWatchdog.beginPreparation();
++            return;
++          }
++          noOutputWatchdog.endPreparation();
++        })
+       : completion,
+     getForwardedSignal: childCleanup.getForwardedSignal,
+     teardown,
+diff --git a/test/scripts/run-vitest.test.ts b/test/scripts/run-vitest.test.ts
+index 4979f1ab580..524320bdad1 100644
+--- a/test/scripts/run-vitest.test.ts
++++ b/test/scripts/run-vitest.test.ts
+@@ -21,6 +21,7 @@ import {
+   resolveVitestNoOutputHeartbeatMs,
+   resolveVitestNodeArgs,
+   resolveVitestNoOutputTimeoutMs,
++  resolveVitestPreparationTimeoutMs,
+ } from "../../scripts/lib/vitest-process-env.mts";
+ import { resolveVitestTestCommand } from "../../scripts/lib/vitest-test-runtime.mts";
+ import {
+@@ -1570,6 +1571,150 @@ registerHooks({resolve(specifier, context, nextResolve) {
+     }
+   });
+ 
++  it("does not charge an admitted cold worker preparation to the scoped deadline", () => {
++    vi.useFakeTimers();
++    try {
++      const stdout = new EventEmitter();
++      const timeoutSpy = vi.fn();
++      const logSpy = vi.fn();
++
++      const watchdog = installVitestNoOutputWatchdog({
++        streams: [stdout],
++        timeoutMs: 60_000,
++        preparationTimeoutMs: 300_000,
++        forceKillAfterMs: 0,
++        log: logSpy,
++        onTimeout: timeoutSpy,
++        setTimeoutFn: setTimeout,
++        clearTimeoutFn: clearTimeout,
++      });
++
++      // The borrowed child reports admission, then the runner compiles a cold
++      // generation (55.5s measured in the failing run) while that child stays
++      // silent on the streams this watchdog counts.
++      vi.advanceTimersByTime(5_000);
++      watchdog.beginPreparation();
++      vi.advanceTimersByTime(55_460);
++      expect(timeoutSpy).not.toHaveBeenCalled();
++      expect(logSpy).toHaveBeenCalledWith(
++        "[vitest] worker preparation admitted; no-output deadline extended to 300000ms.",
++      );
++
++      // Verified readiness restores the scoped deadline, so the warm-cache stall
++      // this shard override exists to catch still fails on its own window.
++      watchdog.endPreparation();
++      vi.advanceTimersByTime(59_999);
++      expect(timeoutSpy).not.toHaveBeenCalled();
++
++      vi.advanceTimersByTime(1);
++      expect(timeoutSpy).toHaveBeenCalledTimes(1);
++      expect(logSpy).toHaveBeenCalledWith(
++        "[vitest] no output for 60000ms; terminating stalled Vitest process group.",
++      );
++
++      watchdog.teardown();
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it("still bounds an admitted preparation that never reports readiness", () => {
++    vi.useFakeTimers();
++    try {
++      const stdout = new EventEmitter();
++      const timeoutSpy = vi.fn();
++      const logSpy = vi.fn();
++
++      const watchdog = installVitestNoOutputWatchdog({
++        streams: [stdout],
++        timeoutMs: 60_000,
++        preparationTimeoutMs: 300_000,
++        forceKillAfterMs: 0,
++        log: logSpy,
++        onTimeout: timeoutSpy,
++        setTimeoutFn: setTimeout,
++        clearTimeoutFn: clearTimeout,
++      });
++
++      watchdog.beginPreparation();
++      vi.advanceTimersByTime(299_999);
++      expect(timeoutSpy).not.toHaveBeenCalled();
++
++      vi.advanceTimersByTime(1);
++      expect(timeoutSpy).toHaveBeenCalledTimes(1);
++      expect(logSpy).toHaveBeenCalledWith(
++        "[vitest] no output for 300000ms; terminating stalled Vitest process group.",
++      );
++
++      watchdog.teardown();
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it("keeps the force-kill fallback when a preparation is admitted after the deadline fired", () => {
++    vi.useFakeTimers();
++    try {
++      const stdout = new EventEmitter();
++      const timeoutSpy = vi.fn();
++      const forceKillSpy = vi.fn();
++      const logSpy = vi.fn();
++
++      const watchdog = installVitestNoOutputWatchdog({
++        streams: [stdout],
++        timeoutMs: 60_000,
++        preparationTimeoutMs: 300_000,
++        forceKillAfterMs: 5_000,
++        log: logSpy,
++        onTimeout: timeoutSpy,
++        onForceKill: forceKillSpy,
++        setTimeoutFn: setTimeout,
++        clearTimeoutFn: clearTimeout,
++      });
++
++      // The scoped deadline fires while the worker stays silent, so the watchdog
++      // signals SIGTERM and arms the force-kill fallback.
++      vi.advanceTimersByTime(60_000);
++      expect(timeoutSpy).toHaveBeenCalledTimes(1);
++
++      // A worker that admits its preparation only now must not cancel that
++      // fallback: the stalled child may still be ignoring SIGTERM.
++      watchdog.beginPreparation();
++      vi.advanceTimersByTime(5_000);
++      expect(forceKillSpy).toHaveBeenCalledTimes(1);
++      expect(logSpy).toHaveBeenCalledWith(
++        "[vitest] process group still alive after 5000ms; sending SIGKILL.",
++      );
++
++      watchdog.teardown();
++    } finally {
++      vi.useRealTimers();
++    }
++  });
++
++  it("parses the optional watchdog preparation window", () => {
++    expect(resolveVitestPreparationTimeoutMs({})).toBeNull();
++    expect(
++      resolveVitestPreparationTimeoutMs({
++        OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS: "60000",
++        OPENCLAW_VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_MS: "300000",
++      }),
++    ).toBe(300000);
++    // The preparation window never narrows the scoped deadline it replaces.
++    expect(
++      resolveVitestPreparationTimeoutMs({
++        OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS: "660000",
++        OPENCLAW_VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_MS: "300000",
++      }),
++    ).toBe(660000);
++    expect(
++      resolveVitestPreparationTimeoutMs({
++        OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS: "60000",
++        OPENCLAW_VITEST_NO_OUTPUT_PREPARATION_TIMEOUT_MS: "0",
++      }),
++    ).toBeNull();
++  });
++
+   it("parses the optional watchdog heartbeat interval", () => {
+     expect(
+       resolveVitestNoOutputHeartbeatMs({ OPENCLAW_VITEST_NO_OUTPUT_HEARTBEAT_MS: "120000" }),
