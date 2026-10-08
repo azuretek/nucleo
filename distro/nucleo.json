@@ -147,13 +147,24 @@
       "n": 11,
       "pr": 162126,
       "branch": "fix/subagent-orphan-retry-timer",
-      "subject": "orphan-recovery restart when the retry timer is not yet scheduled"
+      "subject": "orphan-recovery restart when the retry timer is not yet scheduled",
+      "behaviour": "orphan-recovery restart when the retry timer is not yet scheduled",
+      "behaviourTests": [
+        "src/agents/subagents/registry/subagent-orphan-recovery.restart-integration.test.ts"
+      ]
     },
     {
       "n": 12,
       "pr": 150246,
       "branch": "fix/e2e-built-runtime-typed",
-      "subject": "run the retry-after e2e against the built runtime"
+      "subject": "run the retry-after e2e against the built runtime",
+      "behaviour": "run the retry-after e2e against the built runtime",
+      "behaviourTests": [
+        "src/agents/embedded-agent-runner.retry-after-failover.e2e.test.ts",
+        "test/scripts/tsdown-config.test.ts",
+        "test/scripts/tsgo-core-test-dist-build.test.ts",
+        "test/scripts/tsgo-core-test-shards.test.ts"
+      ]
     },
     {
       "n": 13,
