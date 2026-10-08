@@ -9,7 +9,6 @@
  */
 
 import { expectDefined } from "@openclaw/normalization-core";
-import { Type } from "typebox";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_SAFE_TIMEOUT_DELAY_MS } from "../../packages/gateway-client/src/timeouts.js";
 import { createDeferred } from "../../test/helpers/promise.js";
@@ -20,15 +19,9 @@ import {
   type DiagnosticExecProcessCompletedEvent,
   type DiagnosticEventPayload,
 } from "../infra/diagnostic-events.js";
-import type { GatewayActiveWorkInspectors } from "../infra/gateway-active-work.js";
 import { resetSystemEventsForTest } from "../infra/system-events.js";
 import type { RunExit, SpawnInput } from "../process/supervisor/types.js";
-import { createAgentToolExecutionBudget } from "./agent-tool-source-execution-guard.js";
-import { createCodingToolsGatewayCaller } from "./agent-tools.caller.js";
-import { getFinishedSession } from "./bash-process-registry.js";
 import { createRunExit, runtimeManagedRun } from "./bash-tools.exec-runtime.test-support.js";
-import type { BashSandboxConfig } from "./bash-tools.shared.js";
-import { resolveConversationCapabilityProfile } from "./conversation-capability-profile.js";
 import { resetExecSteeringQueueForTest } from "./exec-steering-queue.js";
 import {
   getGatewayToolCallerIdentity,
@@ -67,24 +60,19 @@ vi.mock("../process/supervisor/index.js", () => ({
 }));
 
 let markBackgrounded: typeof import("./bash-process-registry.js").markBackgrounded;
-let getActiveBackgroundExecSessionCount: typeof import("./bash-process-registry.js").getActiveBackgroundExecSessionCount;
 let listRunningSessions: typeof import("./bash-process-registry.js").listRunningSessions;
+let waitForExecScope: typeof import("./bash-process-registry.js").waitForExecScope;
 let resetProcessRegistryForTests: typeof import("./bash-process-registry.test-support.js").resetProcessRegistryForTests;
 let runExecProcess: typeof import("./bash-tools.exec-runtime.js").runExecProcess;
-let prepareGatewaySuspend: typeof import("../infra/gateway-suspend-coordinator.js").prepareGatewaySuspend;
 let resetGatewaySuspendCoordinatorForLifecycleRestart: typeof import("../infra/gateway-suspend-coordinator.js").resetGatewaySuspendCoordinatorForLifecycleRestart;
-let resumeGatewaySuspend: typeof import("../infra/gateway-suspend-coordinator.js").resumeGatewaySuspend;
 
 beforeAll(async () => {
-  ({ getActiveBackgroundExecSessionCount, listRunningSessions, markBackgrounded } =
+  ({ waitForExecScope, listRunningSessions, markBackgrounded } =
     await import("./bash-process-registry.js"));
   ({ resetProcessRegistryForTests } = await import("./bash-process-registry.test-support.js"));
   ({ runExecProcess } = await import("./bash-tools.exec-runtime.js"));
-  ({
-    prepareGatewaySuspend,
-    resetGatewaySuspendCoordinatorForLifecycleRestart,
-    resumeGatewaySuspend,
-  } = await import("../infra/gateway-suspend-coordinator.js"));
+  ({ resetGatewaySuspendCoordinatorForLifecycleRestart } =
+    await import("../infra/gateway-suspend-coordinator.js"));
 });
 
 beforeEach(() => {
@@ -149,34 +137,6 @@ async function runExecWithExit(params: {
     timeoutSec: params.timeoutSec ?? null,
   });
   return { run, outcome: await run.promise };
-}
-
-function prepareSuspension(requestId: string) {
-  // This test owns only the background-exec registry. Other process-global
-  // activity counters may legitimately stay busy in the non-isolated suite.
-  const inspect: GatewayActiveWorkInspectors = {
-    getQueueSize: () => 0,
-    getPendingReplies: () => 0,
-    getEmbeddedRuns: () => 0,
-    getBackgroundExecSessions: getActiveBackgroundExecSessionCount,
-    getCronRuns: () => 0,
-    getAgentRuns: () => 0,
-    getAcpRuns: () => 0,
-    getMediaRuns: () => 0,
-    getRootRequests: () => 0,
-    getSessionAdmissions: () => 0,
-    getSessionMutations: () => 0,
-    getChatRuns: () => 0,
-    getQueuedTurns: () => 0,
-    getTerminalPersistence: () => 0,
-    getTerminalSessions: () => 0,
-  };
-  return prepareGatewaySuspend({
-    requestId,
-    pauseScheduling: vi.fn(),
-    resumeScheduling: vi.fn(),
-    inspect,
-  });
 }
 
 function requireSystemEventCall(): [string, Record<string, unknown>] {
