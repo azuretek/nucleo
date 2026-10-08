@@ -22,6 +22,24 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, "nucleo.json"), "utf8"));
 const NUCLEO = join(HERE, "nucleo.mjs");
+// ★ The host-local override carries this host checkout and log paths, and both scripts must read the
+// same one. Without it the pipeline wrote its records to the committed placeholder path, which is a
+// path that does not exist here; and an unresolved placeholder is a refusal, never a guess.
+const LOCAL = join(HERE, "..", "nucleo.local.json");
+if (existsSync(LOCAL)) Object.assign(MANIFEST, JSON.parse(readFileSync(LOCAL, "utf8")));
+{
+  const unresolved = [MANIFEST.checkout, MANIFEST.logs].filter(
+    (p) => typeof p === "string" && p.indexOf("USER") !== -1,
+  );
+  if (unresolved.length) {
+    throw new Error(
+      "unresolved host path in the manifest: " +
+        unresolved.join(", ") +
+        ". Set nucleo.local.json beside the manifest for this host.",
+    );
+  }
+}
+
 // ★ Run records and stage logs belong where the manifest says logs live, not inside the
 // checkout: a record carries the host path of its own log, and a host path must never reach a
 // published tree. The host-local override names this host log root.
