@@ -1,7 +1,4 @@
-import type {
-  ProviderResolveDynamicModelContext,
-  ProviderRuntimeModel,
-} from "openclaw/plugin-sdk/plugin-entry";
+import type { ProviderResolveDynamicModelContext } from "openclaw/plugin-sdk/plugin-entry";
 import type { LiveModelCatalogFetchGuard } from "openclaw/plugin-sdk/provider-catalog-live-runtime";
 import type { ProviderCatalogOutcome } from "openclaw/plugin-sdk/provider-catalog-shared";
 import { createProviderApiKeyAuthMethod } from "openclaw/plugin-sdk/provider-entry";
@@ -30,6 +27,13 @@ import {
   isOpenAIApiBaseUrl,
   resolveOpenAIDefaultBaseUrl,
 } from "./base-url.js";
+import {
+  readCodexReasoningLevels,
+  readCodexModelRows,
+  shouldIncludeCodexModelRow,
+  resolveCodexModelInput,
+  type OpenAILiveModelReaders,
+} from "./codex-model-rows.js";
 import {
   shouldResolveDynamicModelThroughCodex,
   shouldUseCodexResponsesHooks,
@@ -574,50 +578,6 @@ function resolveAuthoredOpenAICompletionsRoute(params: {
     normalizeOptionalString(configuredRoute.configuredProvider.baseUrl) ??
     resolveOpenAIDefaultBaseUrl(process.env);
   return { api: "openai-completions", baseUrl };
-}
-
-function isOpenAIProvider(provider: string | undefined): boolean {
-  const normalized = normalizeProviderId(provider ?? "");
-  return normalized === PROVIDER_ID;
-}
-
-function normalizeOpenAITransport(
-  model: ProviderRuntimeModel,
-  context?: {
-    modelId?: string;
-    config?: { models?: { providers?: Record<string, ModelProviderConfig | undefined> } };
-  },
-): ProviderRuntimeModel {
-  const useResponsesTransport = shouldUseOpenAIResponsesTransport({
-    provider: model.provider,
-    modelId: context?.modelId,
-    api: model.api,
-    baseUrl: model.baseUrl,
-    config: context?.config,
-  });
-
-  if (!useResponsesTransport) {
-    return model;
-  }
-
-  return {
-    ...model,
-    api: "openai-responses",
-  };
-}
-
-function resolveConfiguredProviderAuthTransport(
-  providerConfig: ProviderResolveDynamicModelContext["providerConfig"],
-) {
-  const authMode = providerConfig?.auth;
-  if (authMode === "oauth" || authMode === "token") {
-    return "codex";
-  }
-  if (authMode === "api-key") {
-    return "responses";
-  }
-
-  return undefined;
 }
 
 function buildOpenAIUnknownModelHint(modelId: string): string | undefined {
