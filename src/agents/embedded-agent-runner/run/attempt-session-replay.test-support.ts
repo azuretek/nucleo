@@ -327,6 +327,7 @@ export async function withReplaySession(
         contextTokenBudget: 8000,
         images: options.images ?? [],
         modelPrompt: attempt.prompt,
+        onExecSteeringAcknowledged: () => {},
         onFinalPromptText: () => {},
         onSteeringAcknowledged: () => {},
         persistToolResultProjections: async () => {},
