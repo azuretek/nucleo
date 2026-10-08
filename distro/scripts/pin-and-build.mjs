@@ -38,6 +38,9 @@ const APPLY = process.argv.includes("--apply");
 // refuses it, correctly. The host-local override carries this host values.
 const MACHINE = process.env.NUCLEO_MACHINE || MANIFEST.machine?.ssh || "";
 const MACHINE_CHECKOUT = process.env.NUCLEO_MACHINE_CHECKOUT || MANIFEST.machine?.checkout || "";
+// The alert lane is one script with no model in it, and its path comes from the manifest for the same
+// reason the machine does: a path with a user name in it is a household identifier in a public repo.
+const NOTIFY = process.env.NUCLEO_NOTIFY || MANIFEST.notifyScript || "";
 const PIPELINE = join(HERE, "pipeline.mjs");
 const LOG_DIR = MANIFEST.logs || join(TOOLING, "logs");
 const RUNS = join(LOG_DIR, "runs");
@@ -121,6 +124,16 @@ const STEPS = [
   ["machine", ["run", "--only", "gate,build"], 14400000],
 ];
 
+function alert(subject, body) {
+  if (!NOTIFY || !existsSync(NOTIFY)) {
+    say("no alert lane configured, so this failure is only in the log");
+    return;
+  }
+  const r = run(process.execPath, [NOTIFY, "--subject", subject, "--body", body, "--tag", "cron"], {
+    timeout: 90000,
+  });
+  say(r.status === 0 ? "alert sent" : "alert failed: " + (r.stderr || "").trim().slice(0, 200));
+}
 function runStep(where, args, timeoutMs) {
   say("  stage " + where + ": " + args.join(" "));
   if (where === "machine") {
@@ -192,7 +205,9 @@ function main() {
       const r = runStep(where, args, timeoutMs);
       if (r.status !== 0) {
         say("RED at " + where + ": " + args.join(" "));
-        say(((r.stdout || "") + (r.stderr || "")).trim().split("\n").slice(-14).join("\n"));
+        const tail = ((r.stdout || "") + (r.stderr || "")).trim().split("\n").slice(-14).join("\n");
+        say(tail);
+        alert("nucleo chain red at " + where, tail);
         appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " RED " + where + "\n");
         process.exitCode = 1;
         return;
