@@ -39,7 +39,6 @@ import { parseGatewayRole } from "../../role-policy.js";
 import { authenticatedProfileUnavailableError } from "../../server-methods/gateway-client-identity.js";
 import { formatForLog } from "../../ws-log.js";
 import { truncateCloseReason } from "../close-reason.js";
-import { checkGatewayWsBrowserOrigin } from "../ws-origin-policy.js";
 import type {
   AuthenticatedGatewayConnect,
   GatewayConnectPhaseContext,
