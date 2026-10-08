@@ -7,8 +7,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { listStagedChangedPaths } from "../../scripts/changed-lanes.mts";
 import { readNativeTypeScriptConfig } from "../../scripts/lib/native-typescript-config.mts";
 import {
-  expandTsgoExecutionGraphs,
-  resolveCiTsgoGraphs,
   TSGO_ROOT_TEST_SHARDS,
   findOversizedTsgoCoreTestShards,
   findTsgoCoreTestShardViolations,
@@ -101,20 +99,7 @@ describe("tsgo core test shards", () => {
 
   it("pins every dist-dependent test to a shard that actually owns it", () => {
     const roots = (config: string) => {
-      const parsed = ts.getParsedCommandLineOfConfigFile(
-        path.resolve(config),
-        {},
-        {
-          ...ts.sys,
-          onUnRecoverableConfigFileDiagnostic: (diagnostic) => {
-            throw new Error(ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
-          },
-        },
-      );
-      if (!parsed) {
-        throw new Error(`Could not parse ${config}`);
-      }
-      expect(parsed.errors, config).toEqual([]);
+      const parsed = readNativeTypeScriptConfig({ cwd: process.cwd(), configFileName: config });
       return parsed.fileNames.map((file) =>
         path.relative(process.cwd(), file).replaceAll(path.sep, "/"),
       );
