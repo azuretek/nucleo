@@ -14,3 +14,9 @@ How this repository decides that a build may go out. The scripts own the mechani
 - The distro branch is rebuilt from the manifest each time, never appended to.
 - **At a pin bump the topic branches are left alone.** sync replays their commits onto the new pin; a patch that proves expensive to replay is rebased onto it then, and only then.
 - Assemble where the history lives, on the pool. Gate and build on the test host, which only ever sees the assembled commit, and put nothing authoritative on it.
+
+- **Our own gate is the check, not the noise from a fork.** This repository is a public fork and carries
+  upstream workflows, which fire on pull requests here and cannot pass, because they expect the upstream
+  repository context and permissions. So a merge waits on **our gate log for that commit**, and a red from
+  somebody else workflow is noted rather than obeyed. Without this rule every pull request to main looks
+  permanently red while nothing is actually wrong.
