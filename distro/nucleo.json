@@ -5,7 +5,7 @@
     "remote": "upstream"
   },
   "fork": {
-    "repo": "azuretek/openclaw",
+    "repo": "azuretek/nucleo",
     "remote": "origin"
   },
   "checkout": "/home/USER/src/openclaw",
@@ -93,6 +93,12 @@
       "pr": 150246,
       "branch": "fix/e2e-built-runtime-typed",
       "subject": "run the retry-after e2e against the built runtime"
+    },
+    {
+      "n": 13,
+      "pr": null,
+      "branch": "fix/clear-upstream-workflows",
+      "subject": "clear the upstream workflows this fork does not run"
     }
   ],
   "version": "0.0.1",
