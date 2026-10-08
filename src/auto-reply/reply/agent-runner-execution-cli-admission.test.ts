@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { withTestRunAdmission } from "../../agents/admitted-run-context.test-support.js";
 import { buildPreparedCliRunContext } from "../../agents/cli-runner.test-helpers.js";
@@ -10,6 +11,10 @@ import { GENERIC_EXTERNAL_RUN_FAILURE_TEXT } from "../../agents/failover/user-co
 import { installSessionPlacementAdmissionProvider } from "../../agents/session-placement-admission.js";
 import type { SessionEntry } from "../../config/sessions.js";
 import { loadSessionEntry, replaceSessionEntry } from "../../config/sessions/session-accessor.js";
+import { resolveSqliteScope } from "../../config/sessions/session-accessor.sqlite-scope.js";
+import { closeOpenClawAgentDatabaseByPathAsync } from "../../state/openclaw-agent-db-lifecycle.js";
+import { resolveOpenClawAgentSqlitePath } from "../../state/openclaw-agent-db.paths.js";
+import { resolveOpenClawStateSqlitePath } from "../../state/openclaw-state-db.paths.js";
 import {
   setupAgentRunnerExecutionTestState,
   getExecuteAgentTurnForTest,
@@ -30,16 +35,102 @@ function rejectUnexpectedCompactionSuccessor(): never {
 }
 
 describe("executeAgentTurn: CLI admission", () => {
+  it("reads cold CLI fallback metadata while another connection holds a shared-state write transaction", async () => {
+    const sessionKey = "agent:main:cli-read-contention";
+    const storePath = makeTestSessionStorePath();
+    const binding = { sessionId: "existing-native-session" };
+    const entry: SessionEntry = {
+      sessionId: "session",
+      updatedAt: 1,
+      lifecycleRevision: "current",
+      cliSessionBindings: { "claude-cli": binding },
+    };
+    await replaceSessionEntry({ sessionKey, storePath }, entry);
+    const followupRun = createFollowupRun();
+    followupRun.run.provider = "claude-cli";
+    followupRun.run.model = "claude-sonnet-4-6";
+    state.isCliProviderMock.mockImplementation((provider) => provider === "claude-cli");
+    state.runWithModelFallbackMock.mockImplementationOnce(async (params: FallbackRunnerParams) => ({
+      result: await params.run(
+        "claude-cli",
+        "claude-sonnet-4-6",
+        initialFallbackAttemptOptions(params),
+      ),
+      provider: "claude-cli",
+      model: "claude-sonnet-4-6",
+      attempts: [],
+    }));
+    let holder: DatabaseSync | undefined;
+    state.runCliAgentMock.mockImplementationOnce(async () => {
+      expect(holder?.isTransaction).toBe(true);
+      holder?.exec("ROLLBACK");
+      return {
+        payloads: [{ text: "done" }],
+        meta: { agentMeta: { sessionId: binding.sessionId, cliSessionBinding: binding } },
+      };
+    });
+    const uninstall = installSessionPlacementAdmissionProvider({
+      assertCompactionSuccessorAllowed: rejectUnexpectedCompactionSuccessor,
+      executeLocalTurn: async (_claim, runLocal) => {
+        await closeOpenClawAgentDatabaseByPathAsync(
+          resolveOpenClawAgentSqlitePath(resolveSqliteScope({ sessionKey, storePath })),
+        );
+        // Ordinary writes now coordinate on the real shared database, not a sidecar.
+        holder = new DatabaseSync(resolveOpenClawStateSqlitePath());
+        holder.exec("BEGIN IMMEDIATE");
+        try {
+          expect(() => loadSessionEntry({ sessionKey, storePath })).toThrow(/database is locked/iu);
+          return await runLocal();
+        } finally {
+          if (holder?.isTransaction) {
+            holder.exec("ROLLBACK");
+          }
+          holder?.close();
+        }
+      },
+      executeTurn: async (_claim, _params, runLocal) => await runLocal(),
+    });
+    try {
+      const executeAgentTurn = await getExecuteAgentTurnForTest();
+      const result = await executeAgentTurn({
+        ...createMinimalRunAgentTurnParams({ followupRun }),
+        sessionKey,
+        storePath,
+        activeSessionStore: { [sessionKey]: entry },
+        getActiveSessionEntry: () => entry,
+      });
+      expect(result).toMatchObject({
+        kind: "success",
+        runResult: { payloads: [{ text: "done" }] },
+      });
+      expect(result).not.toHaveProperty("runResult.meta.error");
+      expect(state.runCliAgentMock).toHaveBeenCalledOnce();
+      expectMockCallArgFields(state.runCliAgentMock, 0, "CLI run params", {
+        cliSessionId: binding.sessionId,
+        cliSessionBinding: binding,
+      });
+      expect(state.runEmbeddedAgentMock).not.toHaveBeenCalled();
+    } finally {
+      uninstall();
+    }
+  });
+
   it.each([
     "ordinary",
     "heartbeat",
     "preserved",
     "revised",
     "revision-established",
+    "retired-placement",
     "rejected",
     "rejected-clear",
   ])("settles the %s reply's native binding before releasing placement", async (kind) => {
-    const sessionKey = "agent:main:cli-binding-settlement";
+    const sessionKey =
+      kind === "ordinary"
+        ? "main"
+        : kind === "heartbeat"
+          ? "global"
+          : "agent:main:cli-binding-settlement";
     const storePath = makeTestSessionStorePath();
     const entry: SessionEntry = {
       sessionId: "session",
@@ -48,6 +139,7 @@ describe("executeAgentTurn: CLI admission", () => {
     };
     const rejected = kind === "rejected" || kind === "rejected-clear";
     const revisionChanged = kind === "revised" || kind === "revision-established";
+    const placementRetired = kind === "retired-placement";
     const binding = { sessionId: "admitted-native-session", authProfileId: "anthropic:cli" };
     const settledBinding = { ...binding, sessionId: "settled-native-session" };
     await replaceSessionEntry(
@@ -130,7 +222,11 @@ describe("executeAgentTurn: CLI admission", () => {
             },
           );
         }
-        const result = await runLocal();
+        const execution = runLocal();
+        if (placementRetired) {
+          uninstall();
+        }
+        const result = await execution;
         observedBinding = loadSessionEntry({ sessionKey, storePath })?.cliSessionBindings?.[
           "claude-cli"
         ];
@@ -148,7 +244,7 @@ describe("executeAgentTurn: CLI admission", () => {
         activeSessionStore: { [sessionKey]: entry },
         getActiveSessionEntry: () => entry,
       });
-      if (revisionChanged) {
+      if (revisionChanged || placementRetired) {
         expect(result.kind).toBe("final");
         expect(state.runCliAgentMock).not.toHaveBeenCalled();
         expect(
@@ -172,6 +268,92 @@ describe("executeAgentTurn: CLI admission", () => {
       uninstall();
     }
   });
+
+  it.each(["ordinary", "rejected-clear", "room-event"] as const)(
+    "retains the %s reply after its continuity write loses ownership",
+    async (kind) => {
+      const sessionKey = "agent:main:cli-owner-loss";
+      const storePath = makeTestSessionStorePath();
+      const binding = { sessionId: "previous-native-session" };
+      const entry: SessionEntry = {
+        sessionId: "session",
+        updatedAt: 1,
+        cliSessionBindings: { "claude-cli": binding },
+      };
+      await replaceSessionEntry({ sessionKey, storePath }, entry);
+      const followupRun = createFollowupRun();
+      followupRun.run.provider = "claude-cli";
+      followupRun.run.model = "claude-sonnet-4-6";
+      if (kind === "room-event") {
+        followupRun.currentInboundEventKind = "room_event";
+      }
+      state.isCliProviderMock.mockImplementation((provider) => provider === "claude-cli");
+      const candidate = buildCliRunResult({
+        context: buildPreparedCliRunContext(),
+        output: {
+          text: kind === "rejected-clear" ? GENERIC_EXTERNAL_RUN_FAILURE_TEXT : "Captured reply",
+        },
+        effectiveCliSessionId: "replacement-native-session",
+        bindingFlushOk: kind !== "rejected-clear",
+        usedHistoryPrompt: false,
+        userTurnHandled: true,
+        sessionBindingDisabled: false,
+        preparedContextAgentMeta: {},
+      });
+      const provider: Parameters<typeof installSessionPlacementAdmissionProvider>[0] = {
+        assertCompactionSuccessorAllowed: rejectUnexpectedCompactionSuccessor,
+        executeLocalTurn: async (_claim, runLocal) => await runLocal(),
+        executeTurn: async (_claim, _params, runLocal) => await runLocal(),
+      };
+      const uninstall = installSessionPlacementAdmissionProvider(provider);
+      let uninstallReplacement: (() => void) | undefined;
+      state.runCliAgentMock.mockImplementationOnce(async () => {
+        uninstallReplacement = installSessionPlacementAdmissionProvider({ ...provider });
+        return candidate;
+      });
+      state.runWithModelFallbackMock.mockImplementationOnce(
+        async (params: FallbackRunnerParams) => {
+          const result = await params.run(
+            "claude-cli",
+            "claude-sonnet-4-6",
+            initialFallbackAttemptOptions(params),
+          );
+          expect(result).toMatchObject({
+            classification: null,
+            result: {
+              payloads: expect.arrayContaining(candidate.payloads ?? []),
+              meta: {
+                replayInvalid: true,
+                error: {
+                  message: expect.stringContaining("CLI session continuity could not be saved"),
+                  fallbackSafe: false,
+                },
+              },
+            },
+          });
+          return { result, provider: "claude-cli", model: "claude-sonnet-4-6", attempts: [] };
+        },
+      );
+      try {
+        const executeAgentTurn = await getExecuteAgentTurnForTest();
+        await executeAgentTurn({
+          ...createMinimalRunAgentTurnParams({ followupRun }),
+          sessionKey,
+          storePath,
+          activeSessionStore: { [sessionKey]: entry },
+          getActiveSessionEntry: () => entry,
+        });
+        expect(state.runCliAgentMock).toHaveBeenCalledOnce();
+        expect(state.runEmbeddedAgentMock).not.toHaveBeenCalled();
+        expect(
+          loadSessionEntry({ sessionKey, storePath })?.cliSessionBindings?.["claude-cli"],
+        ).toEqual(binding);
+      } finally {
+        uninstallReplacement?.();
+        uninstall();
+      }
+    },
+  );
 
   it("carries the admitted session permission and placement into the CLI grant", async () => {
     state.isCliProviderMock.mockReturnValue(true);
