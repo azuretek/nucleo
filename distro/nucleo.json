@@ -201,5 +201,10 @@
   "forkOwnedPaths": [
     "distro",
     ".github/workflows/distro.yml"
-  ]
+  ],
+  "machine": {
+    "ssh": "USER@HOST",
+    "checkout": "/home/USER/src/openclaw",
+    "_note": "the machine the gate and build stages run on; the host-local override carries this host values"
+  }
 }

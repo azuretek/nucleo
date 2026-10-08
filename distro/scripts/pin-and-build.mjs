@@ -33,8 +33,11 @@ const LOCAL = join(TOOLING, "nucleo.local.json");
 if (existsSync(LOCAL)) Object.assign(MANIFEST, JSON.parse(readFileSync(LOCAL, "utf8")));
 
 const APPLY = process.argv.includes("--apply");
-const MACHINE = process.env.NUCLEO_MACHINE || "azuretek@192.168.1.62";
-const MACHINE_CHECKOUT = process.env.NUCLEO_MACHINE_CHECKOUT || "/home/azuretek/src/openclaw";
+// The build machine and its checkout come from the manifest, never from this file: a host path or a
+// LAN address committed here is a household identifier in a public repo, and the publish scan
+// refuses it, correctly. The host-local override carries this host values.
+const MACHINE = process.env.NUCLEO_MACHINE || MANIFEST.machine?.ssh || "";
+const MACHINE_CHECKOUT = process.env.NUCLEO_MACHINE_CHECKOUT || MANIFEST.machine?.checkout || "";
 const PIPELINE = join(HERE, "pipeline.mjs");
 const LOG_DIR = MANIFEST.logs || join(TOOLING, "logs");
 const RUNS = join(LOG_DIR, "runs");
@@ -132,6 +135,13 @@ function runStep(where, args, timeoutMs) {
 }
 
 function main() {
+  if (!MACHINE || !MACHINE_CHECKOUT || /USER|HOST/.test(MACHINE + MACHINE_CHECKOUT)) {
+    say(
+      "the build machine is not set for this host: put machine.ssh and machine.checkout in nucleo.local.json",
+    );
+    process.exitCode = 1;
+    return;
+  }
   if (!takeLock()) {
     say("another run holds the lock; doing nothing");
     return;
