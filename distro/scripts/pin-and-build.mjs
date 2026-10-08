@@ -140,7 +140,7 @@ function runStep(where, args, timeoutMs) {
     const remote =
       "cd " +
       MACHINE_CHECKOUT +
-      " && git fetch -q origin refs/heads/main:refs/remotes/origin/main && git checkout -q -f -B main origin/main && node distro/scripts/pipeline.mjs " +
+      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && node distro/scripts/pipeline.mjs " +
       args.join(" ");
     return run("ssh", ["-o", "BatchMode=yes", MACHINE, remote], { timeout: timeoutMs });
   }
@@ -205,7 +205,11 @@ function main() {
       const r = runStep(where, args, timeoutMs);
       if (r.status !== 0) {
         say("RED at " + where + ": " + args.join(" "));
-        const tail = ((r.stdout || "") + (r.stderr || "")).trim().split("\n").slice(-14).join("\n");
+        const tail = ((r.stdout || "") + (r.stderr || "") + (r.error ? String(r.error) : ""))
+          .trim()
+          .split("\n")
+          .slice(-14)
+          .join("\n");
         say(tail);
         alert("nucleo chain red at " + where, tail);
         appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " RED " + where + "\n");
