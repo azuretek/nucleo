@@ -140,22 +140,20 @@ export async function executeDispatch(state: PrepareDispatchExecutionReadyState)
                 sourceReplyDeliveryMode: state.sourceReplyDeliveryMode,
                 sessionPromptSourceReplyDeliveryMode: state.sessionStableSourceReplyDeliveryMode,
                 ...state.sourceReplyDeliveryRuntimeOptions,
-                ...({
-                  mediaNormalizationOwner: state.isInternalWebchatTurn ? "gateway" : undefined,
-                  onPendingContinuation: (settlement) => {
-                    pendingContinuation = true;
-                    pendingContinuationSettlement ??= settlement;
-                  },
-                  onPendingExecSteering: (settlement) => {
-                    pendingExecSteeringSettlements.push(settlement);
-                  },
-                  onSessionMetadataChanges: notifySessionMetadataChanges,
-                  onSessionPrepared: state.notePreparedSession,
-                  onRunVerbosityResolved: (settings) => {
-                    state.noteRunVerbosity(settings);
-                    params.replyOptions?.onRunVerbosityResolved?.(settings);
-                  },
-                } satisfies InternalReplyResolverOptions),
+                mediaNormalizationOwner: state.isInternalWebchatTurn ? "gateway" : undefined,
+                onPendingContinuation: (settlement) => {
+                  pendingContinuation = true;
+                  pendingContinuationSettlement ??= settlement;
+                },
+                onPendingExecSteering: (settlement) => {
+                  pendingExecSteeringSettlements.push(settlement);
+                },
+                onSessionMetadataChanges: notifySessionMetadataChanges,
+                onSessionPrepared: state.notePreparedSession,
+                onRunVerbosityResolved: (settings) => {
+                  state.noteRunVerbosity(settings);
+                  params.replyOptions?.onRunVerbosityResolved?.(settings);
+                },
                 onObservedReplyDelivery: state.markObservedReplyDelivery,
                 typingPolicy: typing.typingPolicy,
                 suppressTyping: typing.suppressTyping,
