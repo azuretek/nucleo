@@ -1,0 +1,212 @@
+diff --git a/src/gateway/server-methods/chat-send-request.test.ts b/src/gateway/server-methods/chat-send-request.test.ts
+index f0ab3ac2766..6e6e820876c 100644
+--- a/src/gateway/server-methods/chat-send-request.test.ts
++++ b/src/gateway/server-methods/chat-send-request.test.ts
+@@ -297,6 +297,46 @@ describe("normalizeChatSendRequest", () => {
+     });
+   });
+ 
++  it("strips the reserved reconnect marker for a non-operator UI client", () => {
++    const iosClient = humanClient();
++    iosClient.connect.client.id = "openclaw-ios";
++    expect(
++      normalizeChatSendRequest({
++        params: validParams({ __controlUiReconnectResume: true }),
++        client: iosClient,
++      }),
++    ).toMatchObject({
++      ok: true,
++      value: { rawMessage: "hello", reconnectResumeRequested: false },
++    });
++  });
++
++  it("still resumes for an operator UI client", () => {
++    expect(
++      normalizeChatSendRequest({
++        params: validParams({ __controlUiReconnectResume: true }),
++        client: humanClient(),
++      }),
++    ).toMatchObject({
++      ok: true,
++      value: { rawMessage: "hello", reconnectResumeRequested: true },
++    });
++  });
++
++  it("keeps the reserved reconnect marker rejected for a public webchat client", () => {
++    const webchatClient = humanClient();
++    webchatClient.connect.client.id = "webchat-ui";
++    webchatClient.connect.client.mode = "webchat";
++    const result = normalizeChatSendRequest({
++      params: validParams({ __controlUiReconnectResume: true }),
++      client: webchatClient,
++    });
++    if (result.ok) {
++      throw new Error("expected the reserved marker to stay rejected");
++    }
++    expect(result.error).toContain("__controlUiReconnectResume");
++  });
++
+   it("rejects an empty text-and-attachment request", () => {
+     const result = normalizeChatSendRequest({
+       params: validParams({ message: "  " }),
+diff --git a/src/gateway/server-methods/chat-server-timing.ts b/src/gateway/server-methods/chat-server-timing.ts
+index ff7c3d7f5de..f35699d9c1a 100644
+--- a/src/gateway/server-methods/chat-server-timing.ts
++++ b/src/gateway/server-methods/chat-server-timing.ts
+@@ -1,4 +1,4 @@
+-import { isOperatorUiClient } from "../../utils/message-channel.js";
++import { isNativeAppUiClient, isOperatorUiClient } from "../../utils/message-channel.js";
+ import type { GatewayClient, GatewayRequestContext } from "./types.js";
+ 
+ type ChatSendAckServerTiming = {
+@@ -44,14 +44,23 @@ export function resolveControlUiReconnectResumeParams(
+     return { params, resumeRequested: false };
+   }
+   const record = params as Record<string, unknown>;
+-  const resumeRequested =
+-    record[CONTROL_UI_RECONNECT_RESUME_PARAM] === true && isOperatorUiClient(clientInfo);
+-  if (!resumeRequested) {
++  // The reserved marker is UI-internal, and only the UI clients that may carry it
++  // get it stripped before the strict params validator runs: the operator UI and
++  // the first-party native apps. For any other client the field stays where it
++  // is and the validator rejects the request, which is the guard a public webchat
++  // client is held to. Which clients may act on it is a separate question,
++  // answered by resumeRequested below.
++  const carriesReservedMarker = isOperatorUiClient(clientInfo) || isNativeAppUiClient(clientInfo);
++  const requested = record[CONTROL_UI_RECONNECT_RESUME_PARAM] === true;
++  if (!requested || !carriesReservedMarker) {
+     return { params, resumeRequested: false };
+   }
+   const validatedParams = { ...record };
+   delete validatedParams[CONTROL_UI_RECONNECT_RESUME_PARAM];
+-  return { params: validatedParams, resumeRequested: true };
++  return {
++    params: validatedParams,
++    resumeRequested: requested && isOperatorUiClient(clientInfo),
++  };
+ }
+ 
+ export function emitOperatorChatSendServerTiming(params: {
+diff --git a/src/gateway/server/ws-connection/connect-admission.ts b/src/gateway/server/ws-connection/connect-admission.ts
+index 3d2c7c5b1d2..c8512584fdf 100644
+--- a/src/gateway/server/ws-connection/connect-admission.ts
++++ b/src/gateway/server/ws-connection/connect-admission.ts
+@@ -27,6 +27,7 @@ import { roleScopesAllow } from "../../../shared/operator-scope-compat.js";
+ import {
+   isBrowserCopilotClient,
+   isBrowserOperatorUiClient,
++  isNativeAppUiClient,
+   isOperatorUiClient,
+ } from "../../../utils/message-channel.js";
+ import { isGatewayAuthPolicyCurrent } from "../../auth-policy.js";
+@@ -38,7 +39,6 @@ import { parseGatewayRole } from "../../role-policy.js";
+ import { authenticatedProfileUnavailableError } from "../../server-methods/gateway-client-identity.js";
+ import { formatForLog } from "../../ws-log.js";
+ import { truncateCloseReason } from "../close-reason.js";
+-import { isNativeAppUiClient } from "./handshake-auth-helpers.js";
+ import type {
+   AuthenticatedGatewayConnect,
+   GatewayConnectPhaseContext,
+diff --git a/src/gateway/server/ws-connection/handshake-auth-helpers.linux.test.ts b/src/gateway/server/ws-connection/handshake-auth-helpers.linux.test.ts
+index d9331e80ff5..4357a3218f6 100644
+--- a/src/gateway/server/ws-connection/handshake-auth-helpers.linux.test.ts
++++ b/src/gateway/server/ws-connection/handshake-auth-helpers.linux.test.ts
+@@ -6,11 +6,8 @@ import {
+   GATEWAY_CLIENT_MODES,
+ } from "../../../../packages/gateway-protocol/src/client-info.js";
+ import type { ConnectParams } from "../../../../packages/gateway-protocol/src/schema.js";
+-import {
+-  isNativeAppUiClient,
+-  resolvePairingLocality,
+-  shouldAllowSilentLocalPairing,
+-} from "./handshake-auth-helpers.js";
++import { isNativeAppUiClient } from "../../../utils/message-channel.js";
++import { resolvePairingLocality, shouldAllowSilentLocalPairing } from "./handshake-auth-helpers.js";
+ 
+ const LINUX_NATIVE_CONNECT_PARAMS = {
+   client: {
+diff --git a/src/gateway/server/ws-connection/handshake-auth-helpers.ts b/src/gateway/server/ws-connection/handshake-auth-helpers.ts
+index 58fdf517f9b..182211d15e6 100644
+--- a/src/gateway/server/ws-connection/handshake-auth-helpers.ts
++++ b/src/gateway/server/ws-connection/handshake-auth-helpers.ts
+@@ -34,16 +34,6 @@ type HandshakeBrowserSecurityContext = {
+   authRateLimiter?: AuthRateLimiter;
+ };
+ 
+-export function isNativeAppUiClient(client: ConnectParams["client"]): boolean {
+-  return (
+-    client.mode === GATEWAY_CLIENT_MODES.UI &&
+-    (client.id === GATEWAY_CLIENT_IDS.MACOS_APP ||
+-      client.id === GATEWAY_CLIENT_IDS.LINUX_APP ||
+-      client.id === GATEWAY_CLIENT_IDS.IOS_APP ||
+-      client.id === GATEWAY_CLIENT_IDS.ANDROID_APP)
+-  );
+-}
+-
+ function resolveBrowserOriginRateLimitKey(requestOrigin?: string): string {
+   const trimmedOrigin = requestOrigin?.trim();
+   if (!trimmedOrigin) {
+diff --git a/src/utils/message-channel.test.ts b/src/utils/message-channel.test.ts
+index 352cc2e1d2b..9fe3cc1d32f 100644
+--- a/src/utils/message-channel.test.ts
++++ b/src/utils/message-channel.test.ts
+@@ -11,6 +11,7 @@ import {
+   isEphemeralGatewayClient,
+   isInternalNonDeliveryChannel,
+   isMarkdownCapableMessageChannel,
++  isNativeAppUiClient,
+   isOperatorUiClient,
+   resolveGatewayMessageChannel,
+ } from "./message-channel.js";
+@@ -89,6 +90,23 @@ describe("message-channel", () => {
+     expect(isBrowserCopilotClient({ id: "openclaw-browser-copilot", mode: "webchat" })).toBe(true);
+   });
+ 
++  it("classifies the first-party native apps as native app UIs", () => {
++    for (const id of ["openclaw-macos", "openclaw-linux", "openclaw-ios", "openclaw-android"]) {
++      expect(isNativeAppUiClient({ id, mode: "ui" })).toBe(true);
++    }
++    // The id alone is not the class: the mode has to be ui, and watchOS is out.
++    for (const client of [
++      { id: "openclaw-ios", mode: "webchat" },
++      { id: "openclaw-watchos", mode: "ui" },
++      { id: "openclaw-control-ui", mode: "ui" },
++      { id: "webchat-ui", mode: "ui" },
++      { id: undefined, mode: "ui" },
++      undefined,
++    ]) {
++      expect(isNativeAppUiClient(client)).toBe(false);
++    }
++  });
++
+   it("normalizes plugin aliases when registered", () => {
+     setActivePluginRegistry(
+       createTestRegistry([
+diff --git a/src/utils/message-channel.ts b/src/utils/message-channel.ts
+index beed1d2f5c1..ff6246d2ca4 100644
+--- a/src/utils/message-channel.ts
++++ b/src/utils/message-channel.ts
+@@ -67,6 +67,23 @@ export function isOperatorUiClient(client?: GatewayClientInfoLike | null): boole
+   );
+ }
+ 
++const NATIVE_APP_UI_CLIENT_IDS = new Set<string>([
++  GATEWAY_CLIENT_NAMES.MACOS_APP,
++  GATEWAY_CLIENT_NAMES.LINUX_APP,
++  GATEWAY_CLIENT_NAMES.IOS_APP,
++  GATEWAY_CLIENT_NAMES.ANDROID_APP,
++]);
++
++/** Return whether a client is a first-party native app UI: openclaw-macos, -linux, -ios or -android. */
++export function isNativeAppUiClient(client?: GatewayClientInfoLike | null): boolean {
++  const clientId = normalizeGatewayClientName(client?.id);
++  return (
++    normalizeGatewayClientMode(client?.mode) === GATEWAY_CLIENT_MODES.UI &&
++    clientId !== undefined &&
++    NATIVE_APP_UI_CLIENT_IDS.has(clientId)
++  );
++}
++
+ /** Return whether a client is the browser Control UI. */
+ export function isBrowserOperatorUiClient(client?: GatewayClientInfoLike | null): boolean {
+   const clientId = normalizeGatewayClientName(client?.id);
