@@ -64,6 +64,10 @@ export function resolveBoundaryRootShimsTimeoutMs(env: NodeJS.ProcessEnv = proce
     ? parsePositiveInt(raw, "OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS")
     : 300_000;
 }
+export function resolveBoundaryDtsTimeoutMs(env: NodeJS.ProcessEnv = process.env) {
+  const raw = env.OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS?.trim();
+  return raw ? parsePositiveInt(raw, "OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS") : 300_000;
+}
 /**
  * Prefixes streamed child output line-by-line without breaking partial chunks.
  */
@@ -309,7 +313,9 @@ async function prepareExtensionPackageBoundaryArtifacts(argv: string[] = process
           args: unit.args,
           env: compilerEnv,
           timeoutMs: Math.min(
-            unit.id === "plugin-sdk" ? resolveBoundaryRootShimsTimeoutMs() : 300_000,
+            unit.id === "plugin-sdk"
+              ? resolveBoundaryRootShimsTimeoutMs()
+              : resolveBoundaryDtsTimeoutMs(),
             compilerTimeoutMs ?? Number.POSITIVE_INFINITY,
           ),
           onStdoutLine(line: string) {
