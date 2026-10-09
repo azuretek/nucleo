@@ -140,7 +140,7 @@ function runStep(where, args, timeoutMs) {
     const remote =
       "cd " +
       MACHINE_CHECKOUT +
-      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && node distro/scripts/pipeline.mjs " +
+      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 node distro/scripts/pipeline.mjs " +
       args.join(" ");
     return run("ssh", ["-o", "BatchMode=yes", MACHINE, remote], { timeout: timeoutMs });
   }
