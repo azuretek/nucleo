@@ -24,6 +24,10 @@ import {
 import { resolveUiConversationIdentity } from "../../lib/sessions/session-key.ts";
 import { getSafeSessionStorage } from "../../local-storage.ts";
 import { releaseChatAttachmentPayloads } from "./attachment-payload-store.ts";
+import {
+  chatComposerDraftErrorMessage,
+  CHAT_COMPOSER_DRAFT_STORAGE_ERROR,
+} from "./composer-draft-messages.ts";
 import { normalizeChatComposerDraft } from "./composer-draft.ts";
 import {
   captureChatComposerDraftSnapshot,
@@ -55,13 +59,9 @@ import {
   DurableChatComposerPersistence,
   durableComposerScopeIdentity,
 } from "./durable-composer-persistence.ts";
+export { CHAT_COMPOSER_DRAFT_STORAGE_ERROR };
 
 const CHAT_COMPOSER_DRAFT_PERSIST_DELAY_MS = 200;
-import {
-  chatComposerDraftErrorMessage,
-  CHAT_COMPOSER_DRAFT_STORAGE_ERROR,
-} from "./composer-draft-messages.ts";
-export { CHAT_COMPOSER_DRAFT_STORAGE_ERROR };
 
 export { storedChatOutboxScopeKey } from "../../lib/chat/outbox-store.ts";
 export { listStoredChatOutboxes } from "../../lib/chat/outbox-store-projection.ts";
