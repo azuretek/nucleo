@@ -234,8 +234,11 @@ async function withTimeout<T>(
   const onExternalAbort = () => controller.abort(external?.reason);
   const unlink = () => external?.removeEventListener("abort", onExternalAbort);
   if (external) {
-    if (external.aborted) controller.abort(external.reason);
-    else external.addEventListener("abort", onExternalAbort, { once: true });
+    if (external.aborted) {
+      controller.abort(external.reason);
+    } else {
+      external.addEventListener("abort", onExternalAbort, { once: true });
+    }
   }
   return await new Promise<T>((resolve, reject) => {
     const onTimeout = () => {
