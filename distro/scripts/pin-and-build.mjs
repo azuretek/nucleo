@@ -73,7 +73,7 @@ const FETCH_MAIN = [
   "fetch",
   "--quiet",
   MANIFEST.fork.remote,
-  "refs/heads/" +
+  "+refs/heads/" +
     MANIFEST.distroBranch +
     ":refs/remotes/" +
     MANIFEST.fork.remote +
@@ -120,7 +120,8 @@ function newestUpstreamPin() {
 }
 
 const STEPS = [
-  ["assembly", ["run", "--only", "assemble,verify,handoff"], 5400000],
+  ["assembly", ["run", "--only", "assemble,verify"], 5400000],
+  ["handoff", ["run", "--only", "handoff"], 900000],
   ["machine", ["run", "--only", "gate,build"], 14400000],
 ];
 
@@ -134,13 +135,114 @@ function alert(subject, body) {
   });
   say(r.status === 0 ? "alert sent" : "alert failed: " + (r.stderr || "").trim().slice(0, 200));
 }
+// ★ Upstream workflow files stay in the tree, because its tests and its build read them, and GitHub
+// would run every one of them. So around each handoff the driver switches Actions off, pushes, and
+// disables by id every workflow that is not ours before switching Actions back on. A workflow that
+// first appears in a new pin therefore never gets a run, and nothing upstream ships has to change.
+const REPO_SLUG = MANIFEST.fork.repo;
+const OUR_WORKFLOW = ".github/workflows/distro.yml";
+const gh = (args, timeout = 120000) => run("gh", args, { timeout });
+function setActions(enabled) {
+  const args = [
+    "api",
+    "-X",
+    "PUT",
+    "repos/" + REPO_SLUG + "/actions/permissions",
+    "-F",
+    "enabled=" + enabled,
+  ];
+  if (enabled) args.push("-f", "allowed_actions=all");
+  const r = gh(args);
+  if (r.status !== 0)
+    throw new Error("could not set Actions enabled=" + enabled + ": " + (r.stderr || "").trim());
+}
+function activeStrays() {
+  const r = gh([
+    "api",
+    "--paginate",
+    "repos/" + REPO_SLUG + "/actions/workflows?per_page=100",
+    "--jq",
+    '.workflows[] | select(.state=="active") | "\\(.id) \\(.path)"',
+  ]);
+  if (r.status !== 0) throw new Error("could not list workflows: " + (r.stderr || "").trim());
+  return (r.stdout || "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => ({ id: l.slice(0, l.indexOf(" ")), path: l.slice(l.indexOf(" ") + 1) }))
+    .filter((w) => w.path !== OUR_WORKFLOW);
+}
+function knownWorkflowCount() {
+  const r = gh([
+    "api",
+    "repos/" + REPO_SLUG + "/actions/workflows?per_page=1",
+    "--jq",
+    ".total_count",
+  ]);
+  return Number((r.stdout || "0").trim()) || 0;
+}
+// Waits for GitHub to register the pushed workflow files (the count is the state it waits on, the
+// deadline only the failsafe), then disables every active one that is not ours.
+function disableStrays(expected, waitMs) {
+  const deadline = Date.now() + waitMs;
+  while (knownWorkflowCount() < expected && Date.now() < deadline)
+    run("sleep", ["10"], { timeout: 20000 });
+  let disabled = 0;
+  for (const w of activeStrays()) {
+    const r = gh([
+      "api",
+      "-X",
+      "PUT",
+      "repos/" + REPO_SLUG + "/actions/workflows/" + w.id + "/disable",
+    ]);
+    if (r.status === 0) disabled += 1;
+    else say("could not disable " + w.path + ": " + (r.stderr || "").trim());
+  }
+  return disabled;
+}
+function handoffQuietly(args, timeoutMs) {
+  const expected = (
+    git(["ls-tree", "--name-only", MANIFEST.distroBranch, ".github/workflows/"]).stdout || ""
+  )
+    .split("\n")
+    .filter((p) => /\.ya?ml$/.test(p)).length;
+  setActions(false);
+  let r;
+  try {
+    r = run("node", [PIPELINE, ...args], { cwd: REPO, timeout: timeoutMs });
+    if (r.status === 0) say("  disabled while Actions was off: " + disableStrays(expected, 90000));
+  } finally {
+    setActions(true);
+  }
+  if (r.status !== 0) return r;
+  say("  disabled after Actions came back: " + disableStrays(expected, 180000));
+  const left = activeStrays();
+  if (left.length) {
+    return {
+      status: 1,
+      stdout:
+        "workflows this fork did not choose are still active: " +
+        left.map((w) => w.path).join(", "),
+      stderr: "",
+    };
+  }
+  return r;
+}
+
 function runStep(where, args, timeoutMs) {
   say("  stage " + where + ": " + args.join(" "));
+  if (where === "handoff") {
+    try {
+      return handoffQuietly(args, timeoutMs);
+    } catch (e) {
+      return { status: 1, stdout: "", stderr: String(e) };
+    }
+  }
   if (where === "machine") {
     const remote =
       "cd " +
       MACHINE_CHECKOUT +
-      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 node distro/scripts/pipeline.mjs " +
+      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS=1800000 node distro/scripts/pipeline.mjs " +
       args.join(" ");
     return run("ssh", ["-o", "BatchMode=yes", MACHINE, remote], { timeout: timeoutMs });
   }
@@ -218,6 +320,33 @@ function main() {
       }
     }
     say("chain green");
+    // The machine records live on the build machine, so the green result is recorded here as well,
+    // against the commit that was actually built, which is what the coverage check reads.
+    git(FETCH_MAIN);
+    const built = (
+      git(["rev-parse", "refs/remotes/" + MANIFEST.fork.remote + "/" + MANIFEST.distroBranch])
+        .stdout || ""
+    ).trim();
+    mkdirSync(RUNS, { recursive: true });
+    const id = stamp().replace(/[:.]/g, "-") + "-chain";
+    writeFileSync(
+      join(RUNS, id + ".json"),
+      JSON.stringify(
+        {
+          id,
+          pinTag: MANIFEST.pinnedTag,
+          inputs: { distro: built },
+          stages: [
+            { name: "assembly", status: "ok" },
+            { name: "handoff", status: "ok" },
+            { name: "build", status: "ok" },
+          ],
+          result: "green",
+        },
+        null,
+        2,
+      ) + "\n",
+    );
     appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " green " + head + "\n");
   } finally {
     releaseLock();

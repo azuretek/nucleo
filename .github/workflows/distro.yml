@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   checks:
@@ -18,11 +19,13 @@ jobs:
         with:
           node-version: 24
       - name: only the checks we chose
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          extra=$(ls .github/workflows | grep -v "^distro.yml$" || true)
-          if [ -n "$extra" ]; then
-            echo "workflows this fork did not choose are present; extend the clearing patch:"
-            echo "$extra"
+          active=$(gh api --paginate "repos/${{ github.repository }}/actions/workflows?per_page=100" --jq '.workflows[] | select(.state=="active") | .path' | grep -v '^.github/workflows/distro.yml$' || true)
+          if [ -n "$active" ]; then
+            echo "workflows this fork did not choose are active; the pin-and-build driver disables them at each handoff:"
+            echo "$active"
             exit 1
           fi
       - name: manifest
