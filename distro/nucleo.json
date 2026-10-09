@@ -1,0 +1,211 @@
+{
+  "_comment": "The single owner of every value the Núcleo surfaces must agree on. Change a pin here, not in a script.",
+  "upstream": {
+    "repo": "openclaw/openclaw",
+    "remote": "upstream"
+  },
+  "fork": {
+    "repo": "azuretek/nucleo",
+    "remote": "origin"
+  },
+  "checkout": "/home/USER/src/openclaw",
+  "pinnedTag": "v2026.9.8",
+  "distroBranch": "main",
+  "patchPolicy": "upstream-first",
+  "refuseShallowClone": true,
+  "image": {
+    "name": "openclaw-gateway",
+    "devTagScheme": "nucleo-<version>-dev.<build>",
+    "releaseTagScheme": "nucleo-<version>",
+    "buildFirst": 1,
+    "keepDevImages": 10
+  },
+  "logs": "/var/log/nucleo",
+  "gates": [
+    "check",
+    "lint",
+    "test",
+    "build"
+  ],
+  "patches": [
+    {
+      "n": 2,
+      "pr": 163964,
+      "branch": "fix/image-draft-snapshot",
+      "subject": "image drafts survive a temporary file disappearing",
+      "behaviour": "image drafts survive a temporary file disappearing",
+      "behaviourTests": [
+        "ui/src/pages/chat/attachment-payload-snapshot.test.ts",
+        "ui/src/pages/chat/durable-composer-storage-warning.test.ts"
+      ]
+    },
+    {
+      "n": 3,
+      "pr": 151441,
+      "branch": "fix/chat-send-reserved-marker",
+      "subject": "chat.send after a reconnect is no longer rejected",
+      "behaviour": "chat.send after a reconnect is no longer rejected",
+      "behaviourTests": [
+        "src/gateway/server-methods/chat-send-request.test.ts",
+        "src/gateway/server/ws-connection/handshake-auth-helpers.linux.test.ts",
+        "src/utils/message-channel.test.ts"
+      ]
+    },
+    {
+      "n": 4,
+      "pr": 148581,
+      "branch": "fix/openai-nano-platform-route",
+      "subject": "gpt-5.4-nano no longer rejects keys as incompatible",
+      "behaviour": "gpt-5.4-nano no longer rejects keys as incompatible",
+      "behaviourTests": [
+        "extensions/openai/catalog-expectations.test-support.ts",
+        "extensions/openai/model-route-contract.test.ts",
+        "extensions/openai/openai-provider-nano-route.test.ts",
+        "extensions/openai/openai-provider.test.ts",
+        "src/agents/runtime-plan/prepare-auth.nano-platform-route.test.ts",
+        "src/agents/runtime-plan/prepare-auth.test.ts",
+        "src/commands/auth-choice.model-check.test.ts",
+        "src/commands/models/list.status.test.ts"
+      ]
+    },
+    {
+      "n": 5,
+      "pr": 144745,
+      "branch": "fix/surface-model-ref-resolution-reason",
+      "subject": "config says why a model ref could not resolve"
+    },
+    {
+      "n": 6,
+      "pr": 152205,
+      "branch": "fix/exec-completion-steering",
+      "subject": "background-exec completions steer into busy sessions",
+      "behaviour": "background-exec completions steer into busy sessions",
+      "behaviourTests": [
+        "src/agents/bash-process-registry.test.ts",
+        "src/agents/bash-tools.exec-runtime.settlement.test.ts",
+        "src/agents/bash-tools.exec-runtime.test.ts",
+        "src/agents/bash-tools.notify-on-exit-ack.test.ts",
+        "src/agents/code-mode.result-budget.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-context-advancement.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-build.provenance.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-error.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.admission.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.exec-steering.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.projections.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.retention.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.steering.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-prompt-submit.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-session-replay.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-stream-settle.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt-yield-handoff.test.ts",
+        "src/agents/embedded-agent-runner/run/attempt.media-hint-cache-boundary.test.ts",
+        "src/agents/exec-steering-queue.test.ts",
+        "src/auto-reply/reply/dispatch-from-config.exec-steering-settlement.test.ts",
+        "src/auto-reply/reply/session-reset-cleanup.test.ts",
+        "test/e2e/qa-lab/runtime/exec-completion-steering.product-proof.e2e.test.ts",
+        "test/plugins/native-reasoning-subscription.test.ts",
+        "test/tsconfig/tsconfig.core.test.agents-root.json",
+        "test/tsconfig/tsconfig.core.test.agents-tools.json"
+      ]
+    },
+    {
+      "n": 7,
+      "pr": 161344,
+      "branch": "fix/lobster-llm-adapter-current",
+      "subject": "Lobster runs native LLM stages in embedded workflows",
+      "behaviour": "Lobster runs native LLM stages in embedded workflows",
+      "behaviourTests": [
+        "extensions/lobster/src/lobster-checkpoint-provenance.test.ts",
+        "extensions/lobster/src/lobster-gateway-scope.test.ts",
+        "extensions/lobster/src/lobster-runner.test.ts",
+        "extensions/lobster/src/lobster-tool.test.ts"
+      ]
+    },
+    {
+      "n": 8,
+      "pr": 162160,
+      "branch": "fix/gateway-startup-health-cold-worker-cache",
+      "subject": "bound a cold Vitest worker build",
+      "behaviour": "bound a cold Vitest worker build",
+      "behaviourTests": [
+        "test/scripts/run-vitest.test.ts"
+      ]
+    },
+    {
+      "n": 9,
+      "pr": 162144,
+      "branch": "fix/catalog-startup-phase-trace",
+      "subject": "name the startup phase that overruns the catalog deadline"
+    },
+    {
+      "n": 10,
+      "pr": 162132,
+      "branch": "fix/cron-forced-run-ack-budget",
+      "subject": "cron forced-run ack budget under load"
+    },
+    {
+      "n": 11,
+      "pr": 162126,
+      "branch": "fix/subagent-orphan-retry-timer",
+      "subject": "orphan-recovery restart when the retry timer is not yet scheduled",
+      "behaviour": "orphan-recovery restart when the retry timer is not yet scheduled",
+      "behaviourTests": [
+        "src/agents/subagents/registry/subagent-orphan-recovery.restart-integration.test.ts"
+      ]
+    },
+    {
+      "n": 12,
+      "pr": 150246,
+      "branch": "fix/e2e-built-runtime-typed",
+      "subject": "run the retry-after e2e against the built runtime",
+      "behaviour": "run the retry-after e2e against the built runtime",
+      "behaviourTests": [
+        "src/agents/embedded-agent-runner.retry-after-failover.e2e.test.ts",
+        "test/scripts/tsdown-config.test.ts",
+        "test/scripts/tsgo-core-test-dist-build.test.ts",
+        "test/scripts/tsgo-core-test-shards.test.ts"
+      ]
+    },
+    {
+      "n": 13,
+      "pr": null,
+      "branch": "fix/clear-upstream-workflows",
+      "subject": "clear the upstream workflows this fork does not run"
+    },
+    {
+      "n": 14,
+      "pr": null,
+      "branch": "fix/distro-not-upstream-source",
+      "subject": "the fork tooling tree is not scanned as upstream source"
+    }
+  ],
+  "version": "0.0.1",
+  "branchModel": {
+    "main": "our version of the latest upstream release pin: the pin plus our adapted patches. Dev builds come from here continuously.",
+    "release": "a release is a semver tag on main, unique to Nucleo and never upstream's version. Nothing publishes without a green gate on that commit.",
+    "pinBump": "bumping the pin is a minor-or-major version event: the pin change and the patch adaptation land together."
+  },
+  "devTagScheme": "v<version>-dev.<build>.<sha>",
+  "releaseTagScheme": "v<version>",
+  "versioning": "0.0.0 is the starting dev line, not a release. The first release is v0.0.1. A release bumps the version and tags it on main; main itself always carries the next unreleased version.",
+  "gatesNote": "Every name here must exist as a pnpm script in the pinned repo. 'typecheck' does not exist there, so that leg failed with ERR_PNPM_NO_SCRIPT and manufactured a false red on every run; the repo's own aggregate check is 'check'.",
+  "_pathsNote": "The working copy of this manifest lives with the nucleo skill and carries that host's real checkout and log paths. These values are shape, not any host's paths.",
+  "pinnedCommit": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
+  "pinOwnedFiles": [
+    "config/assertion-safety-baseline.txt",
+    "config/max-lines-baseline.txt"
+  ],
+  "workBranch": "distro/<pin>",
+  "devBuildNumber": "the commit count from the pinned tag to the work branch; the assembly host derives it, and the build host accepts it as NUCLEO_BUILD_NUMBER rather than counting a shallow tree",
+  "current": "0.0.0",
+  "forkOwnedPaths": [
+    "distro",
+    ".github/workflows/distro.yml"
+  ],
+  "machine": {
+    "ssh": "USER@HOST",
+    "checkout": "/home/USER/src/openclaw",
+    "_note": "the machine the gate and build stages run on; the host-local override carries this host values"
+  },
+  "notifyScript": "/home/USER/.claude/skills/notify/scripts/notify.mjs"
+}
