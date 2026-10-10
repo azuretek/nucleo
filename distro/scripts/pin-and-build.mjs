@@ -155,7 +155,8 @@ function newestUpstreamPin() {
 const STEPS = [
   ["assembly", ["run", "--only", "assemble,verify"], 5400000],
   ["handoff", ["run", "--only", "handoff"], 900000],
-  ["machine", ["run", "--only", "gate,build"], 14400000],
+  // A full test run on the build machine outlasted four hours, and the stage was killed mid-test.
+  ["machine", ["run", "--only", "gate,build"], 8 * 60 * 60 * 1000],
 ];
 
 function alert(subject, body) {

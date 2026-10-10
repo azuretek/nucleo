@@ -1,13 +1,12 @@
 # Testing and the gate
 
-The gate is four steps, run in this order, with a build behind all four. Anything that can reject the tree runs before a build, so a failure costs minutes rather than half an hour.
+The gate is three steps, run in this order, with a build behind all three. Anything that can reject the tree runs before a build, so a failure costs minutes rather than half an hour.
 
-| step    | what it covers                                                                                            |
-| ------- | --------------------------------------------------------------------------------------------------------- |
-| `check` | the aggregate type check the pinned repo provides, which is why the manifest names it and not `typecheck` |
-| `lint`  | the linters, including the type-aware pass                                                                |
-| `test`  | the behaviour suites                                                                                      |
-| `build` | the compile, and the last thing to run                                                                    |
+| step    | what it covers                                                                                                                                                                                                 |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `check` | the pinned repo aggregate check: guard preflights, typecheck, the full lint including the type-aware pass, and policy guards. It runs `scripts/run-lint.mts` itself, so a separate `lint` step would repeat it |
+| `test`  | the behaviour suites                                                                                                                                                                                           |
+| `build` | the compile, and the last thing to run                                                                                                                                                                         |
 
 ## Run it
 
