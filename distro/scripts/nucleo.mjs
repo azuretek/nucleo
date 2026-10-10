@@ -4,7 +4,17 @@ import { execFileSync, spawnSync } from "node:child_process";
 // Read docs/distro.md first. Every shared value comes from nucleo.json, never from here.
 //
 //   nucleo.mjs sync [--dry-run] | verify | gate | build [--dry-run] | publish [--dry-run] | status
-import { readFileSync, mkdirSync, appendFileSync, existsSync, writeFileSync } from "node:fs";
+import {
+  readFileSync,
+  mkdirSync,
+  appendFileSync,
+  existsSync,
+  writeFileSync,
+  openSync,
+  closeSync,
+  readSync,
+  fstatSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -540,6 +550,28 @@ function changedPathsEnv() {
   return { OPENCLAW_OXLINT_CHANGED_PATHS: serialized };
 }
 
+// Appends one timestamped line to this host events log, the stream chain-status.mjs follows.
+function event(line) {
+  try {
+    mkdirSync(MANIFEST.logs, { recursive: true });
+    appendFileSync(join(MANIFEST.logs, "events.log"), new Date().toISOString() + " " + line + "\n");
+  } catch {}
+}
+
+// The last bytes of a file, read from the end so a large step log is never loaded whole.
+function tailOf(file, bytes) {
+  const fd = openSync(file, "r");
+  try {
+    const size = fstatSync(fd).size;
+    const start = Math.max(0, size - bytes);
+    const buf = Buffer.alloc(size - start);
+    readSync(fd, buf, 0, buf.length, start);
+    return buf.toString("utf8");
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function gate() {
   const file = logPath("gate");
   const head = sha(MANIFEST.distroBranch);
@@ -547,15 +579,36 @@ function gate() {
     file,
     `gate ${new Date().toISOString()} commit=${git(["rev-parse", MANIFEST.distroBranch])}\n`,
   );
+  event("gate start " + head);
   const env = { ...process.env, ...changedPathsEnv() };
   let green = true;
   for (const step of MANIFEST.gates) {
     log(`gate: pnpm run ${step}`);
-    const r = spawnSync("pnpm", ["run", step], { cwd: MANIFEST.checkout, encoding: "utf8", env });
+    const stepFile = file.replace(/\.log$/, "-" + step + ".log");
+    event("gate step " + step + " start log=" + stepFile);
+    const started = Date.now();
+    // ★ Each step streams to its own file and never into memory. Captured output was capped at
+    // spawnSync default of 1 MiB, the test step prints far more, and overrunning the cap killed it
+    // with no exit code (rc=null), which read as a red with no failing test.
+    const fd = openSync(stepFile, "a");
+    let r;
+    try {
+      r = spawnSync("pnpm", ["run", step], {
+        cwd: MANIFEST.checkout,
+        env,
+        stdio: ["ignore", fd, fd],
+      });
+    } finally {
+      closeSync(fd);
+    }
+    const seconds = Math.round((Date.now() - started) / 1000);
+    const why =
+      (r.signal ? " signal=" + r.signal : "") + (r.error ? " error=" + r.error.message : "");
     appendFileSync(
       file,
-      `\n### ${step} rc=${r.status}\n${(r.stdout || "").slice(-4000)}\n${(r.stderr || "").slice(-2000)}\n`,
+      `\n### ${step} rc=${r.status}${why} ${seconds}s log=${stepFile}\n${tailOf(stepFile, 6000)}\n`,
     );
+    event("gate step " + step + " rc=" + r.status + why + " " + seconds + "s");
     if (r.status !== 0) {
       green = false;
       log(`  ${step} FAILED`);
@@ -564,6 +617,7 @@ function gate() {
     log(`  ${step} ok`);
   }
   appendFileSync(file, `\n@@@ ${green ? "GREEN" : "RED"} ${head}\n`);
+  event("gate " + (green ? "GREEN" : "RED") + " " + head);
   log(`gate ${green ? "GREEN" : "RED"} for ${head}: ${file}`);
   if (!green) process.exitCode = 1;
 }
@@ -594,6 +648,7 @@ function build() {
       ")",
   );
   if (DRY) return;
+  event("build start " + image);
   const heap = String(MANIFEST.buildHeapMb || 3072);
   // The pinned tree ships the Dockerfile, and it is already built for this: type declaration
   // emission is off by default, the base images are pinned by digest, and the runtime stage
@@ -627,6 +682,7 @@ function build() {
     ],
     { stdio: "inherit" },
   );
+  event("build " + (r.status === 0 ? "ok" : "failed rc=" + r.status) + " " + image);
   if (r.status !== 0) throw new Error("image build failed");
   log("built " + image + ". The previous tag stays on the host for rollback.");
 }

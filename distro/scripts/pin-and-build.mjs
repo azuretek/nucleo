@@ -47,6 +47,13 @@ const RUNS = join(LOG_DIR, "runs");
 const LOCK = join(LOG_DIR, "pin-and-build.lock");
 const LOCK_STALE_MS = 6 * 60 * 60 * 1000;
 
+// One timestamped line per stage start and end and per chain result, the stream chain-status.mjs follows.
+const event = (line) => {
+  try {
+    mkdirSync(LOG_DIR, { recursive: true });
+    appendFileSync(join(LOG_DIR, "events.log"), new Date().toISOString() + " " + line + "\n");
+  } catch {}
+};
 const run = (cmd, args, opts = {}) =>
   spawnSync(cmd, args, { encoding: "utf8", timeout: 60000, ...opts });
 const git = (args, opts = {}) => run("git", args, { cwd: REPO, ...opts });
@@ -55,10 +62,24 @@ const stamp = () => new Date().toISOString();
 
 function takeLock() {
   mkdirSync(LOG_DIR, { recursive: true });
+  // ★ A lock is stale the moment its holder is dead, not only after the stale window: a driver
+  // killed while it waits on a stage cannot release it, because no handler runs during spawnSync,
+  // and a six hour wait behind a dead pid is how the twice-daily run lost a whole evening.
   if (existsSync(LOCK)) {
-    const age = Date.now() - Number(readFileSync(LOCK, "utf8").trim().split(" ")[1] || 0);
-    if (Number.isFinite(age) && age < LOCK_STALE_MS) return false;
-    say("clearing a stale lock");
+    const [pid, ms] = readFileSync(LOCK, "utf8").trim().split(" ");
+    let alive = false;
+    try {
+      process.kill(Number(pid), 0);
+      alive = true;
+    } catch (err) {
+      alive = err.code === "EPERM";
+    }
+    const age = Date.now() - Number(ms || 0);
+    if (alive && Number.isFinite(age) && age < LOCK_STALE_MS) return false;
+    say(
+      "clearing a stale lock held by " +
+        (alive ? "a run past the stale window" : "dead pid " + pid),
+    );
   }
   writeFileSync(LOCK, String(process.pid) + " " + Date.now());
   return true;
@@ -244,7 +265,12 @@ function runStep(where, args, timeoutMs) {
       MACHINE_CHECKOUT +
       " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS=1800000 OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS=1800000 node distro/scripts/pipeline.mjs " +
       args.join(" ");
-    return run("ssh", ["-o", "BatchMode=yes", MACHINE, remote], { timeout: timeoutMs });
+    // -tt ties the remote gate to this connection, so a driver that is killed ends it too instead
+    // of leaving an orphan gate running for hours on the build machine.
+    return run("ssh", ["-tt", "-o", "BatchMode=yes", MACHINE, remote], {
+      timeout: timeoutMs,
+      maxBuffer: 64 * 1024 * 1024,
+    });
   }
   return run("node", [PIPELINE, ...args], { cwd: REPO, timeout: timeoutMs });
 }
@@ -284,6 +310,7 @@ function main() {
     );
     if (covered) {
       say("covered by a green build: run " + covered + "; nothing to do");
+      event("chain COVERED " + head);
       if (newer && newer !== MANIFEST.pinnedTag)
         say(
           "a pin bump to " +
@@ -303,8 +330,11 @@ function main() {
       return;
     }
     appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " chain for " + head + "\n");
+    event("chain start " + head);
     for (const [where, args, timeoutMs] of STEPS) {
+      event("stage " + where + " start");
       const r = runStep(where, args, timeoutMs);
+      event("stage " + where + " rc=" + r.status);
       if (r.status !== 0) {
         say("RED at " + where + ": " + args.join(" "));
         const tail = ((r.stdout || "") + (r.stderr || "") + (r.error ? String(r.error) : ""))
@@ -314,6 +344,7 @@ function main() {
           .join("\n");
         say(tail);
         alert("nucleo chain red at " + where, tail);
+        event("chain RED at " + where);
         appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " RED " + where + "\n");
         process.exitCode = 1;
         return;
@@ -347,6 +378,7 @@ function main() {
         2,
       ) + "\n",
     );
+    event("chain GREEN " + built);
     appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " green " + head + "\n");
   } finally {
     releaseLock();
