@@ -60,6 +60,18 @@ const git = (args, opts = {}) => run("git", args, { cwd: REPO, ...opts });
 const say = (line) => console.log(line);
 const stamp = () => new Date().toISOString();
 
+// The pid holding the lock while that process is alive, or null. A dead holder never counts.
+function liveLockHolder() {
+  if (!existsSync(LOCK)) return null;
+  const pid = Number(readFileSync(LOCK, "utf8").trim().split(" ")[0]);
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (err) {
+    return err.code === "EPERM" ? pid : null;
+  }
+}
+
 function takeLock() {
   mkdirSync(LOG_DIR, { recursive: true });
   // ★ A lock is stale the moment its holder is dead, not only after the stale window: a driver
@@ -161,6 +173,9 @@ function alert(subject, body) {
 // disables by id every workflow that is not ours before switching Actions back on. A workflow that
 // first appears in a new pin therefore never gets a run, and nothing upstream ships has to change.
 const REPO_SLUG = MANIFEST.fork.repo;
+// The commit the handoff pushed, which is what the machine gates and builds. The green record names this,
+// never the branch tip at the end of the run, because a merge during the run would move the tip.
+let HANDED_OFF = "";
 const OUR_WORKFLOW = ".github/workflows/distro.yml";
 const gh = (args, timeout = 120000) => run("gh", args, { timeout });
 function setActions(enabled) {
@@ -227,6 +242,29 @@ function handoffQuietly(args, timeoutMs) {
   )
     .split("\n")
     .filter((p) => /\.ya?ml$/.test(p)).length;
+  // The way back: the remote tip this handoff replaces is archived and read back before anything
+  // is pushed over it, so every handoff can be undone.
+  git(FETCH_MAIN);
+  const prior = (
+    git(["rev-parse", "refs/remotes/" + MANIFEST.fork.remote + "/" + MANIFEST.distroBranch])
+      .stdout || ""
+  ).trim();
+  if (prior) {
+    const archive = "archive/" + MANIFEST.distroBranch + "-" + prior.slice(0, 12);
+    git(["push", "-q", MANIFEST.fork.remote, prior + ":refs/heads/" + archive], {
+      timeout: 120000,
+    });
+    const back = (
+      git(["ls-remote", MANIFEST.fork.remote, "refs/heads/" + archive], { timeout: 60000 })
+        .stdout || ""
+    )
+      .split("\t")[0]
+      .trim();
+    if (back !== prior) {
+      return { status: 1, stdout: "", stderr: "could not confirm the archive branch " + archive };
+    }
+    say("  way back: " + archive);
+  }
   setActions(false);
   let r;
   try {
@@ -236,6 +274,7 @@ function handoffQuietly(args, timeoutMs) {
     setActions(true);
   }
   if (r.status !== 0) return r;
+  HANDED_OFF = (git(["rev-parse", MANIFEST.distroBranch]).stdout || "").trim();
   say("  disabled after Actions came back: " + disableStrays(expected, 180000));
   const left = activeStrays();
   if (left.length) {
@@ -352,12 +391,8 @@ function main() {
     }
     say("chain green");
     // The machine records live on the build machine, so the green result is recorded here as well,
-    // against the commit that was actually built, which is what the coverage check reads.
-    git(FETCH_MAIN);
-    const built = (
-      git(["rev-parse", "refs/remotes/" + MANIFEST.fork.remote + "/" + MANIFEST.distroBranch])
-        .stdout || ""
-    ).trim();
+    // against the commit the handoff pushed, which is what the coverage check reads.
+    const built = HANDED_OFF || head;
     mkdirSync(RUNS, { recursive: true });
     const id = stamp().replace(/[:.]/g, "-") + "-chain";
     writeFileSync(
@@ -385,4 +420,12 @@ function main() {
   }
 }
 
+// ★ --idle exits 0 only when no live run holds the lock. Check it BEFORE fetching and checking
+// out, because the checkout is the one the running chain assembles in, and a forced checkout
+// under a running assembly is the two-git-operations race that corrupts the index.
+if (process.argv.includes("--idle")) {
+  const holder = liveLockHolder();
+  if (holder) say("a run is in progress (pid " + holder + "); leaving the checkout alone");
+  process.exit(holder ? 1 : 0);
+}
 main();
