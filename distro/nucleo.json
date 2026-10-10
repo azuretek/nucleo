@@ -23,7 +23,6 @@
   "logs": "/var/log/nucleo",
   "gates": [
     "check",
-    "lint",
     "test",
     "build"
   ],
