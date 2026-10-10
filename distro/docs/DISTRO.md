@@ -13,6 +13,7 @@ All paths are relative to `distro/`.
 ```bash
 node scripts/pin-and-build.mjs            # dry run: is the branch covered, and what would run
 node scripts/pin-and-build.mjs --apply    # run the whole chain below
+node scripts/pin-and-build.mjs --idle     # exit 0 only when no run is in progress
 node scripts/chain-status.mjs             # live snapshot of a run
 node scripts/chain-status.mjs --watch     # follow a run until it ends
 
@@ -66,10 +67,10 @@ Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it 
 Any scheduler can run the chain. It needs this command, the checkout as its working directory, and both a wall-clock and a no-output timeout longer than a full chain, six hours: a ten-minute default once killed the driver mid-chain.
 
 ```bash
-git fetch -q --force origin +refs/heads/main:refs/remotes/origin/main && git checkout -q -f -B main origin/main && node distro/scripts/pin-and-build.mjs --apply
+if node distro/scripts/pin-and-build.mjs --idle; then git fetch -q --force origin +refs/heads/main:refs/remotes/origin/main && git checkout -q -f -B main origin/main && node distro/scripts/pin-and-build.mjs --apply; fi
 ```
 
-Twice a day is enough, because a covered branch makes a run a no-op. A red run calls the alert script, so silence only ever means green or covered.
+`--idle` comes first because the checkout is the one a running chain assembles in: a scheduled run that fires mid-chain must not fetch or check out under it, so it leaves the checkout alone and exits cleanly. Twice a day is enough, because a covered branch makes a run a no-op. A red run calls the alert script, so silence only ever means green or covered.
 
 ## A newer upstream release is reported, never applied
 

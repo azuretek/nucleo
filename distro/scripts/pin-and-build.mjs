@@ -60,6 +60,18 @@ const git = (args, opts = {}) => run("git", args, { cwd: REPO, ...opts });
 const say = (line) => console.log(line);
 const stamp = () => new Date().toISOString();
 
+// The pid holding the lock while that process is alive, or null. A dead holder never counts.
+function liveLockHolder() {
+  if (!existsSync(LOCK)) return null;
+  const pid = Number(readFileSync(LOCK, "utf8").trim().split(" ")[0]);
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (err) {
+    return err.code === "EPERM" ? pid : null;
+  }
+}
+
 function takeLock() {
   mkdirSync(LOG_DIR, { recursive: true });
   // ★ A lock is stale the moment its holder is dead, not only after the stale window: a driver
@@ -408,4 +420,12 @@ function main() {
   }
 }
 
+// ★ --idle exits 0 only when no live run holds the lock. A scheduler checks it BEFORE it fetches and
+// checks out, because the checkout is the one the running chain assembles in, and a forced checkout
+// under a running assembly is the two-git-operations race that corrupts the index.
+if (process.argv.includes("--idle")) {
+  const holder = liveLockHolder();
+  if (holder) say("a run is in progress (pid " + holder + "); leaving the checkout alone");
+  process.exit(holder ? 1 : 0);
+}
 main();
