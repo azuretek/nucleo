@@ -62,16 +62,6 @@ Upstream's timeouts assume CI hardware. The driver raises these on the build mac
 
 Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it is gitignored) and set this host's values: the checkout, the log directory, the build machine's ssh target, checkout and log directory, and optionally an alert script that takes `--subject` and `--body`. The committed manifest carries placeholders on purpose, and every script refuses an unresolved one rather than guessing. The build machine needs the same repository with dependencies installed; it may be shallow, because gate and build need one commit tree rather than history.
 
-## Scheduling
-
-Any scheduler can run the chain. It needs this command, the checkout as its working directory, and both a wall-clock and a no-output timeout longer than a full chain, six hours: a ten-minute default once killed the driver mid-chain.
-
-```bash
-if node distro/scripts/pin-and-build.mjs --idle; then git fetch -q --force origin +refs/heads/main:refs/remotes/origin/main && git checkout -q -f -B main origin/main && node distro/scripts/pin-and-build.mjs --apply; fi
-```
-
-`--idle` comes first because the checkout is the one a running chain assembles in: a scheduled run that fires mid-chain must not fetch or check out under it, so it leaves the checkout alone and exits cleanly. Twice a day is enough, because a covered branch makes a run a no-op. A red run calls the alert script, so silence only ever means green or covered.
-
 ## A newer upstream release is reported, never applied
 
 The driver names a newer upstream release and leaves it alone. A pin change lands together with its patch adaptation, which is a judgement rather than a step; [UPGRADE.md](UPGRADE.md) covers it.

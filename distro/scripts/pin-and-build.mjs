@@ -420,8 +420,8 @@ function main() {
   }
 }
 
-// ★ --idle exits 0 only when no live run holds the lock. A scheduler checks it BEFORE it fetches and
-// checks out, because the checkout is the one the running chain assembles in, and a forced checkout
+// ★ --idle exits 0 only when no live run holds the lock. Check it BEFORE fetching and checking
+// out, because the checkout is the one the running chain assembles in, and a forced checkout
 // under a running assembly is the two-git-operations race that corrupts the index.
 if (process.argv.includes("--idle")) {
   const holder = liveLockHolder();
