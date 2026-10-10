@@ -19,13 +19,20 @@ import {
 } from "./tools/gateway-caller-context.js";
 
 const requestHeartbeatMock = vi.hoisted(() => vi.fn());
-const enqueueSystemEventWithReceiptMock = vi.hoisted(() => vi.fn());
+const enqueueSystemEventReceiptMock = vi.hoisted(() => vi.fn());
+const enqueueExecSteeringCompletionMock = vi.hoisted(() => vi.fn());
 const supervisorMock = vi.hoisted(() => ({ spawn: vi.fn() }));
 vi.mock("../infra/heartbeat-wake.js", () => ({
   requestHeartbeat: requestHeartbeatMock,
 }));
-vi.mock("../infra/system-events.js", () => ({
-  enqueueSystemEventWithReceipt: enqueueSystemEventWithReceiptMock,
+vi.mock("../infra/system-events.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../infra/system-events.js")>()),
+  enqueueSystemEventReceipt: enqueueSystemEventReceiptMock,
+}));
+// The steering copy has its own tests; here it is a fixture, so these cases test ordering only.
+vi.mock("./exec-steering-queue.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./exec-steering-queue.js")>()),
+  enqueueExecSteeringCompletion: enqueueExecSteeringCompletionMock,
 }));
 vi.mock("../process/supervisor/index.js", () => ({
   getProcessSupervisor: () => supervisorMock,
@@ -38,8 +45,12 @@ beforeAll(async () => {
 beforeEach(() => {
   resetProcessRegistryForTests();
   requestHeartbeatMock.mockReset();
-  enqueueSystemEventWithReceiptMock.mockReset();
-  enqueueSystemEventWithReceiptMock.mockReturnValue(vi.fn(() => true));
+  enqueueSystemEventReceiptMock.mockReset();
+  enqueueSystemEventReceiptMock.mockReturnValue({
+    remove: vi.fn(() => true),
+    eventId: "evt-default",
+  });
+  enqueueExecSteeringCompletionMock.mockReset();
   supervisorMock.spawn.mockReset();
 });
 afterEach(() => {
@@ -328,10 +339,10 @@ describe("terminal execution-context release", () => {
       const observed: string[] = [];
       const removal = vi.fn(() => true);
       const deliveryContext = { channel: "telegram", to: "synthetic-chat" };
-      enqueueSystemEventWithReceiptMock.mockImplementation((_text, options) => {
+      enqueueSystemEventReceiptMock.mockImplementation((_text, options) => {
         observed.push("enqueue");
         expect(options.deliveryContext).toEqual(deliveryContext);
-        return removal;
+        return { remove: removal, eventId: "evt-notify" };
       });
       requestHeartbeatMock.mockImplementation(() => {
         observed.push("wake");
@@ -400,12 +411,12 @@ describe("exec settlement recovery", () => {
       const identities: Array<ReturnType<typeof getGatewayToolCallerIdentity>> = [];
       const scopeKey = `settlement-recovery:${boundary}:${asynchronous}`;
       const failure = new Error("process settlement failed");
-      enqueueSystemEventWithReceiptMock.mockImplementation(() => {
+      enqueueSystemEventReceiptMock.mockImplementation(() => {
         observed.push("enqueue");
         if (boundary === "enqueue") {
           throw failure;
         }
-        return vi.fn(() => true);
+        return { remove: vi.fn(() => true), eventId: "evt-recovery" };
       });
       requestHeartbeatMock.mockImplementation(() => {
         observed.push("wake");
