@@ -5,10 +5,19 @@ import { afterEach, expect, it } from "vitest";
 import type { JsonTestResults } from "vitest/node";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
 import { runVitestShutdownCommand } from "../../test/helpers/vitest-shutdown-command.js";
+import { resolveVitestFsModuleCacheRoot } from "../../test/vitest/vitest.performance-config.js";
 
 const fixture = createFixtureLifetime();
 afterEach(() => fixture.cleanup());
 const repoRoot = path.resolve(import.meta.dirname, "../..");
+// The nested run checks retention across files, not cold compilation, so its module and transform
+// caches persist in this checkout between runs. A fresh temp cache recompiled both import graphs on
+// every run and took most of a three minute budget on a loaded host. Only this test writes here.
+const nestedCacheRoot = path.join(
+  resolveVitestFsModuleCacheRoot(repoRoot),
+  "nested",
+  "mcp-retention",
+);
 
 it(
   "does not retain memory-session MCP runtimes across shared-worker files",
@@ -33,7 +42,7 @@ class MemoryBeforeRequesterSequencer extends BaseSequencer {
 const config = createUnitFastVitestConfig();
 export default {
   ...config,
-  cacheDir: ${JSON.stringify(path.join(root, ".vite"))},
+  cacheDir: ${JSON.stringify(path.join(nestedCacheRoot, "vite"))},
   test: {
     ...config.test,
     include: [memoryTest, "src/agents/cli-runner/bundle-mcp.requester-lifecycle.test.ts"],
@@ -57,7 +66,7 @@ export default {
           delete env[key];
         }
       }
-      env.OPENCLAW_VITEST_FS_MODULE_CACHE_PATH = path.join(root, "modules");
+      env.OPENCLAW_VITEST_FS_MODULE_CACHE_PATH = path.join(nestedCacheRoot, "modules");
       env.NO_COLOR = "1";
       const result = await runVitestShutdownCommand({
         cwd: repoRoot,
