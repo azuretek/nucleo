@@ -1,17 +1,21 @@
 # Núcleo distro: how to run it
 
-# Núcleo
+**Núcleo** (accent in branding, `nucleo` in every identifier) is our OpenClaw distribution: OpenClaw pinned to an official upstream release tag, carrying our patches, built from our own source, and gated before any tag moves. The product and code name inside stays OpenClaw so upstream merges keep working.
 
-**Núcleo** (accent in branding, `nucleo` in every identifier) is our OpenClaw distribution: OpenClaw pinned to an
-official upstream release tag, carrying our patches, built from our own source, and gated before any tag moves.
-The product and code name inside stays OpenClaw so upstream merges keep working.
+**Everything shared lives in `nucleo.json`.** The upstream repo, the pinned tag, the distro branch, the patch list, the image and tag scheme, the gate steps and the log directory. Change a value there, never in a script. **Everything about one host lives in `nucleo.local.json`** beside it (see [Setting up a host](#setting-up-a-host)).
 
-**Everything shared lives in `nucleo.json`.** The upstream repo, the pinned tag, the distro branch, the patch
-list, the image and tag scheme, the gate steps and the log directory. Change a value there, never in a script.
+**This file is the whole procedure.** Nothing outside this repository is needed to assemble, gate, build or watch the distro.
 
 ## Commands
 
+All paths are relative to `distro/`.
+
 ```bash
+node scripts/pin-and-build.mjs            # dry run: is the branch covered, and what would run
+node scripts/pin-and-build.mjs --apply    # run the whole chain below
+node scripts/chain-status.mjs             # live snapshot of a run
+node scripts/chain-status.mjs --watch     # follow a run until it ends
+
 node scripts/nucleo.mjs sync    [--dry-run]   # cut or refresh the distro branch at the pin, replay our patches
 node scripts/nucleo.mjs verify               # every patch is an ancestor AND its marker is in the source
 node scripts/nucleo.mjs gate                 # run the manifest's gates on the RESULT, write a dated log
@@ -19,6 +23,57 @@ node scripts/nucleo.mjs build   [--dry-run]  # build the gateway image from the 
 node scripts/nucleo.mjs publish [--dry-run]  # push the tag, only with a green gate log for that commit
 node scripts/nucleo.mjs status               # where the pin, the branch and the last gate log stand
 ```
+
+## The chain, end to end
+
+`pin-and-build.mjs` decides when the chain runs and on which host. The stages belong to `pipeline.mjs`, which writes one run record per run naming the pin, the distro commit and every patch tip; read the record before believing a summary.
+
+1. **Assembly host**, the authoritative checkout: `pipeline.mjs run --only assemble,verify`. `assemble` rebuilds the distro branch as the pin plus the patch series plus the paths the fork owns. `verify` is the acceptance gate: a patch that leaves lines behind passes only when the manifest names its behaviour and the tests that prove it.
+2. **Handoff**: the driver first archives the remote tip it is about to replace as `archive/main-<sha>` and reads it back, so every handoff has a way back. Then `pipeline.mjs run --only handoff` pushes with `--force-with-lease`, inside the workflow guard described below.
+3. **Build machine**: `pipeline.mjs run --only gate,build` over `ssh -tt`, so a driver that is killed ends its remote gate too. It force-fetches the distro branch first, because the handoff rewrites it and a plain fetch is rejected, which would gate stale content. Each gate step streams to its own log file, so output has no size cap and the log can be read while it runs. Then the image build.
+
+**It runs only when the distro branch is not covered.** Covered means a run record for exactly that commit whose stages all passed and which included a build. A green chain writes that record on the assembly host against the commit it handed off, so a green run is never repeated and a commit that lands during a run is never mistaken for built.
+
+**One run at a time.** A lock refuses a second run, because two long git operations in one worktree corrupt the index. A lock whose holder is dead is cleared at once.
+
+## Watching a run
+
+Watch with `chain-status.mjs`, never a polling loop. The driver and the gate each append one timestamped line per stage and per step start and end to `events.log` in their log directory, and `chain-status.mjs` follows both with `tail -F`.
+
+- Without flags it prints the lock holder, the recent events on both hosts and the tail of the live step's log.
+- `--watch` streams events and exits 0 on `chain GREEN` or `chain COVERED`, 1 on `chain RED`, 3 the moment the driver dies without a result, and 2 if nothing is running. `--watch --until=change` exits at the next event of any kind.
+
+## Upstream workflows stay in the tree and never run here
+
+Upstream reads its own workflow files as source: a test-worker asset list names one, and about 164 tests parse them, so deleting them kills the test leg before a single test runs. They stay. The handoff switches Actions off, pushes, disables by id every workflow that is not `.github/workflows/distro.yml`, switches Actions back on and disables again. GitHub registers pushed workflows while Actions is off, so none can start; the first run disabled 110 with 0 runs. `distro.yml` fails if any other workflow is active, and a workflow that first appears in a new pin is caught the same way. The driver needs a GitHub token allowed to change the repository's Actions settings.
+
+## Slow-host timeouts
+
+Upstream's timeouts assume CI hardware. The driver raises these on the build machine only. Each is a knob upstream exposes, or one our patch series adds, so none changes behaviour.
+
+| Variable                                             | Upstream default | Set to | Why                                                                                 |
+| ---------------------------------------------------- | ---------------- | ------ | ----------------------------------------------------------------------------------- |
+| `OPENCLAW_OXLINT_SHARD_TIMEOUT_MS`                   | 15 min           | 45 min | one oxlint shard overran 15 minutes and failed the lint leg                         |
+| `OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS`                   | 5 min            | 30 min | added by `fix/boundary-dts-timeout-knob` for the package boundary units             |
+| `OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS` | 5 min            | 30 min | the plugin-sdk unit reads only this knob, so the general one leaves it at 5 minutes |
+
+## Setting up a host
+
+Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it is gitignored) and set this host's values: the checkout, the log directory, the build machine's ssh target, checkout and log directory, and optionally an alert script that takes `--subject` and `--body`. The committed manifest carries placeholders on purpose, and every script refuses an unresolved one rather than guessing. The build machine needs the same repository with dependencies installed; it may be shallow, because gate and build need one commit tree rather than history.
+
+## Scheduling
+
+Any scheduler can run the chain. It needs this command, the checkout as its working directory, and both a wall-clock and a no-output timeout longer than a full chain, six hours: a ten-minute default once killed the driver mid-chain.
+
+```bash
+git fetch -q --force origin +refs/heads/main:refs/remotes/origin/main && git checkout -q -f -B main origin/main && node distro/scripts/pin-and-build.mjs --apply
+```
+
+Twice a day is enough, because a covered branch makes a run a no-op. A red run calls the alert script, so silence only ever means green or covered.
+
+## A newer upstream release is reported, never applied
+
+The driver names a newer upstream release and leaves it alone. A pin change lands together with its patch adaptation, which is a judgement rather than a step; [UPGRADE.md](UPGRADE.md) covers it.
 
 ## The traps this exists to avoid, all measured
 
@@ -45,20 +100,12 @@ apply to the release, so every assembly becomes hand-adaptation. Measured on our
 **12 of 12 branches were off-pin**, with bases sitting 862 to 2942 commits past the pin, against `main` being
 3232 past it. `sync` now reports `authored_off_pin` for exactly this reason, and 0 is the only healthy number.
 
-## Ownership
+## The build is automatic; the roll is not
 
-The build and the roll are deliberate and never automatic, because they replace a running service. The check half
-is safe to run on a timer so drift appears on its own. Logs land under the manifest's `logs` directory.
+The chain builds an image on its own. Publishing a tag and rolling it out stay deliberate, because they replace a running service, and `pin-and-build.mjs` never publishes. Logs land under the manifest's `logs` directory.
 
 ## Host roles
 
-**★ azurevm1 is the TEST AND BUILD host. Nothing authoritative lives there.** It carries test
-builds, the gate, the container build, docker layers and cache, and disposable worktrees, all of
-which can be recreated. The authoritative checkout of the fork, where sync cuts the distro branch
-and replays the patches, lives on the pool at azureserve1, because that is where history and
-anything that grows belongs. Growing the VM disk buys scratch room for builds, never a permanent
-clone.
+**The build machine is for tests and builds, and nothing authoritative lives there.** It carries test builds, the gate, the container build, docker layers and cache, and disposable worktrees, all of which can be recreated. The authoritative checkout of the fork, where `sync` cuts the distro branch and replays the patches, lives on the assembly host's durable storage, because that is where history and anything that grows belongs. Growing the build machine's disk buys scratch room, never a permanent clone.
 
-The consequence for the code: the shallow-clone refusal guards the operations that replay a patch
-series (sync and verify), and not gate or build, which need one commit tree rather than its
-ancestry. A build host can therefore take the assembled commit alone.
+The consequence for the code: the shallow-clone refusal guards the operations that replay a patch series (sync and verify), and not gate or build, which need one commit tree rather than its ancestry. A build machine can therefore take the assembled commit alone.

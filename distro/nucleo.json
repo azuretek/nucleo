@@ -189,7 +189,7 @@
   "releaseTagScheme": "v<version>",
   "versioning": "0.0.0 is the starting dev line, not a release. The first release is v0.0.1. A release bumps the version and tags it on main; main itself always carries the next unreleased version.",
   "gatesNote": "Every name here must exist as a pnpm script in the pinned repo. 'typecheck' does not exist there, so that leg failed with ERR_PNPM_NO_SCRIPT and manufactured a false red on every run; the repo's own aggregate check is 'check'.",
-  "_pathsNote": "The working copy of this manifest lives with the nucleo skill and carries that host's real checkout and log paths. These values are shape, not any host's paths.",
+  "_pathsNote": "This committed manifest is the only copy. Host values (checkout, logs, build machine, alert script) live in nucleo.local.json beside it, which is gitignored; these values are shape, not any host paths.",
   "pinnedCommit": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
   "pinOwnedFiles": [
     "config/assertion-safety-baseline.txt",
