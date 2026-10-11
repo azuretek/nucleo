@@ -1164,6 +1164,25 @@ describe("run-oxlint", () => {
     expect(shards).toEqual([oxlintShard("extensions", "extensions", "extensions")]);
   });
 
+  it("lets any host size serial plugin lint chunks", () => {
+    const cwd = createTempDir("openclaw-oxlint-chunks-");
+    for (const directory of ["a", "b", "c", "d", "e"]) {
+      mkdirSync(join(cwd, "extensions", directory), { recursive: true });
+    }
+    const names = (env: NodeJS.ProcessEnv) =>
+      createExtensionOxlintShards({ cwd, env, platform: "linux", chunkSize: 2 }).map(
+        (shard) => shard.name,
+      );
+    expect(names({})).toEqual(["extensions:01", "extensions:02", "extensions:03"]);
+    expect(names({ OPENCLAW_OXLINT_EXTENSION_CHUNK_SIZE: "4" })).toEqual([
+      "extensions:01",
+      "extensions:02",
+    ]);
+    expect(() => names({ OPENCLAW_OXLINT_EXTENSION_CHUNK_SIZE: "0" })).toThrow(
+      "OPENCLAW_OXLINT_EXTENSION_CHUNK_SIZE must be a positive integer; got: 0",
+    );
+  });
+
   it("rejects invalid Windows oxlint extension chunk size overrides", () => {
     expect(resolveWindowsExtensionChunkSize({})).toBe(8);
     expect(() =>
