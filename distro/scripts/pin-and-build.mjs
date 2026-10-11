@@ -174,6 +174,17 @@ function alert(subject, body) {
 // disables by id every workflow that is not ours before switching Actions back on. A workflow that
 // first appears in a new pin therefore never gets a run, and nothing upstream ships has to change.
 const REPO_SLUG = MANIFEST.fork.repo;
+// Per-host settings for the build machine stage, from machine.env in nucleo.local.json: knobs the
+// pinned repo exposes (test shard parallelism, worker counts) whose right value depends on that
+// machine. Names and values are checked so nothing reaches the remote shell unquoted.
+const MACHINE_ENV = Object.entries(MANIFEST.machine?.env || {})
+  .map(([name, value]) => {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(name) || !/^[A-Za-z0-9._,:/-]+$/.test(String(value))) {
+      throw new Error("machine.env entry refused: " + name);
+    }
+    return name + "=" + value + " ";
+  })
+  .join("");
 // The commit the handoff pushed, which is what the machine gates and builds. The green record names this,
 // never the branch tip at the end of the run, because a merge during the run would move the tip.
 let HANDED_OFF = "";
@@ -305,7 +316,9 @@ function runStep(where, args, timeoutMs) {
       // host umask of 002 made every directory the gate created trip that check.
       "umask 022 && cd " +
       MACHINE_CHECKOUT +
-      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS=1800000 OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS=1800000 node distro/scripts/pipeline.mjs " +
+      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS=1800000 OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS=1800000 " +
+      MACHINE_ENV +
+      "node distro/scripts/pipeline.mjs " +
       args.join(" ");
     // -tt ties the remote gate to this connection, so a driver that is killed ends it too instead
     // of leaving an orphan gate running for hours on the build machine.
