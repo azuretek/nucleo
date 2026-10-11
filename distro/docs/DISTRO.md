@@ -60,7 +60,7 @@ Upstream's timeouts assume CI hardware. The driver raises these on the build mac
 
 ## Setting up a host
 
-Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it is gitignored) and set this host's values: the checkout, the log directory, the build machine's ssh target, checkout and log directory, and optionally an alert script that takes `--subject` and `--body`. The committed manifest carries placeholders on purpose, and every script refuses an unresolved one rather than guessing. The build machine needs the same repository with dependencies installed; it may be shallow, because gate and build need one commit tree rather than history.
+Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it is gitignored) and set this host's values: the checkout, the log directory, the build machine's ssh target, checkout and log directory, and optionally an alert script that takes `--subject` and `--body`. The committed manifest carries placeholders on purpose, and every script refuses an unresolved one rather than guessing. The build machine needs the same repository with dependencies installed, and its checkout and every ancestor must not be group- or world-writable, because the node host refuses a temp workspace under one (the driver runs the machine stage with `umask 022` for what the gate creates); it may be shallow, because gate and build need one commit tree rather than history.
 
 ## A newer upstream release is reported, never applied
 

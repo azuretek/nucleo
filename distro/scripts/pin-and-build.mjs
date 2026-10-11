@@ -301,7 +301,9 @@ function runStep(where, args, timeoutMs) {
   }
   if (where === "machine") {
     const remote =
-      "cd " +
+      // umask 022: the node host refuses a temp workspace under a group-writable ancestor, and a
+      // host umask of 002 made every directory the gate created trip that check.
+      "umask 022 && cd " +
       MACHINE_CHECKOUT +
       " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS=1800000 OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS=1800000 node distro/scripts/pipeline.mjs " +
       args.join(" ");
