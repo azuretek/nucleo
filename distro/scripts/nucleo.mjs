@@ -721,8 +721,24 @@ function status() {
 }
 
 const RUN = { sync, verify, gate, build, publish, status };
+const USAGE =
+  "usage: nucleo.mjs sync [--dry-run] | verify | gate | build [--dry-run] | publish [--dry-run] [--release] | status";
+// An unknown argument is a refusal, never ignored: `gate --help` once ran a full gate on a host that
+// must never run one.
+const FLAGS = { sync: ["--dry-run"], build: ["--dry-run"], publish: ["--dry-run", "--release"] };
+if (ARGS.includes("--help") || ARGS.includes("-h")) {
+  log(USAGE);
+  process.exit(0);
+}
 if (!RUN[CMD]) {
   log(`unknown command: ${CMD}`);
+  log(USAGE);
+  process.exit(2);
+}
+const stray = ARGS.slice(1).filter((a) => !(FLAGS[CMD] || []).includes(a));
+if (stray.length) {
+  log(`unknown argument for ${CMD}: ${stray.join(" ")}`);
+  log(USAGE);
   process.exit(2);
 }
 try {
