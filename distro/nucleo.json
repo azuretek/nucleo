@@ -176,6 +176,12 @@
       "pr": null,
       "branch": "fix/boundary-dts-timeout-knob",
       "subject": "let a slow host raise the boundary dts timeout"
+    },
+    {
+      "n": 16,
+      "pr": null,
+      "branch": "perf/mcp-retention-warm-cache",
+      "subject": "keep the MCP retention nested run caches warm"
     }
   ],
   "version": "0.0.1",
