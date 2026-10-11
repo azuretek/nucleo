@@ -19,6 +19,11 @@ import { hasNonRunVitestSubcommand } from "./lib/vitest-cli-mode.mts";
 import { parseVitestExecutionArgs } from "./lib/vitest-cli.mts";
 import { resolveVitestHomeSelection } from "./lib/vitest-home-selection.mts";
 import { isCiLikeEnv, resolveLocalFullSuiteProfile } from "./lib/vitest-local-scheduling.mts";
+import {
+  createVitestMemoryAdmission,
+  resolveVitestShardMemoryBytes,
+  type VitestMemoryAdmission,
+} from "./lib/vitest-memory-admission.mts";
 import { resolveCiVitestPlanConcurrency, runVitestPlans } from "./lib/vitest-plan-scheduling.mts";
 import { resolveVitestNodeArgs, resolveVitestProcessEnv } from "./lib/vitest-process-env.mts";
 import type { exitVitestBySignal } from "./lib/vitest-process.mts";
@@ -253,6 +258,7 @@ async function runVitestSpecs(
   automatic = false,
   continueOnFailure = false,
   stopOnFailure = false,
+  admit?: VitestMemoryAdmission,
 ) {
   let exitCode = 0;
   let stopScheduling = false;
@@ -264,6 +270,7 @@ async function runVitestSpecs(
     concurrency,
     isExclusive: automatic ? (spec) => isExclusiveCiTestConfig(spec.config) : undefined,
     shouldStop: () => stopScheduling || Boolean(termination.signal),
+    admit,
     run: async (spec, index) => {
       let result: Awaited<ReturnType<typeof runLoggedVitestSpec>>;
       try {
@@ -556,6 +563,7 @@ export async function runTestProjects(
       ) &&
       runSpecs.every((spec) => spec.cacheAssignment?.kind === "scheduler");
     let scheduledSpecs = runSpecs;
+    let admit: VitestMemoryAdmission | undefined;
     const concurrency = automatic
       ? resolveCiVitestPlanConcurrency(runSpecs.length, {
           logicalCpuCount: os.availableParallelism(),
@@ -589,9 +597,17 @@ export async function runTestProjects(
           }),
           baseEnv,
         );
-        console.error(
-          `[test] running ${scheduledSpecs.length} Vitest shards with parallelism ${concurrency}`,
-        );
+        const shardMemoryBytes = resolveVitestShardMemoryBytes(baseEnv);
+        if (shardMemoryBytes === undefined) {
+          console.error(
+            `[test] running ${scheduledSpecs.length} Vitest shards with parallelism ${concurrency}`,
+          );
+        } else {
+          admit = createVitestMemoryAdmission({ shardBytes: shardMemoryBytes });
+          console.error(
+            `[test] running ${scheduledSpecs.length} Vitest shards with up to ${concurrency} admitted by free memory (${Math.round(shardMemoryBytes / 1024 ** 2)} MB each)`,
+          );
+        }
       }
     }
 
@@ -603,6 +619,7 @@ export async function runTestProjects(
       automatic,
       baseEnv.OPENCLAW_NODE_TEST_PLAN_CONTINUE_ON_FAILURE === "1",
       focusedCiShard,
+      admit,
     );
     if (concurrency === 1 && termination.signal) {
       return;

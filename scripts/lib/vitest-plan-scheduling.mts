@@ -21,6 +21,8 @@ export async function runVitestPlans<T>(
     concurrency: number;
     isExclusive?: (plan: T) => boolean;
     shouldStop: () => boolean;
+    /** Optional admission: resolves a release once the lane may start, or undefined when no work remains. */
+    admit?: (lane: number, pending: () => boolean) => Promise<(() => void) | undefined>;
     run: (plan: T, index: number, lane: number) => Promise<void>;
   },
 ) {
@@ -47,12 +49,23 @@ export async function runVitestPlans<T>(
       Array.from(
         { length: Math.min(exclusive ? 1 : options.concurrency, end - first) },
         async (_, lane) => {
-          while (next < end && errors.length === 0 && !options.shouldStop()) {
+          const pending = () => next < end && errors.length === 0 && !options.shouldStop();
+          while (pending()) {
+            const release = options.admit ? await options.admit(lane, pending) : undefined;
+            if (options.admit && !release) {
+              break;
+            }
+            if (!pending()) {
+              release?.();
+              break;
+            }
             const index = next++;
             try {
               await options.run(plans[index]!, index, lane);
             } catch (error) {
               errors.push(error);
+            } finally {
+              release?.();
             }
           }
         },
