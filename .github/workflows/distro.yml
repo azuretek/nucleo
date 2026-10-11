@@ -1,0 +1,36 @@
+name: distro
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: only the checks we chose
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          active=$(gh api --paginate "repos/${{ github.repository }}/actions/workflows?per_page=100" --jq '.workflows[] | select(.state=="active") | .path' | grep -v '^.github/workflows/distro.yml$' || true)
+          if [ -n "$active" ]; then
+            echo "workflows this fork did not choose are active; the pin-and-build driver disables them at each handoff:"
+            echo "$active"
+            exit 1
+          fi
+      - name: manifest
+        working-directory: distro
+        run: node scripts/validate-manifest.mjs
+      - name: publish scan (our own tooling)
+        working-directory: distro
+        run: node scripts/publish-scan.mjs
