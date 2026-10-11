@@ -188,6 +188,18 @@
       "pr": null,
       "branch": "perf/gateway-fixture-warm-cache",
       "subject": "keep the gateway fixture fork caches warm"
+    },
+    {
+      "n": 18,
+      "pr": null,
+      "branch": "perf/test-shards-scale-with-memory",
+      "subject": "admit parallel test shards by free memory"
+    },
+    {
+      "n": 19,
+      "pr": null,
+      "branch": "perf/oxlint-extension-chunk-size",
+      "subject": "let any host size serial plugin lint chunks"
     }
   ],
   "version": "0.0.1",
