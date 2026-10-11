@@ -6123,8 +6123,11 @@ process.stdin.on("end", () => {
 
   it(
     "retires timed-out shared MCP sessions before later catalog retries",
-    { timeout: 8_000 },
+    { timeout: 40_000 },
     async () => {
+      // Each server is a fresh Node process. Its connect deadline and the waits on its log all
+      // include that cold start, which a loaded host stretches past two seconds; the marker is
+      // written only once the process runs, so every start below gets an 8_000 ms budget.
       const tempDir = makeTempDir(tempDirs, "bundle-mcp-timeout-retire-");
       const triggerServerPath = path.join(tempDir, "trigger-server.mjs");
       const triggerLogPath = path.join(tempDir, "trigger.log");
@@ -6231,12 +6234,13 @@ process.on("SIGINT", shutdown);`,
               trigger: {
                 command: process.execPath,
                 args: [triggerServerPath],
-                connectionTimeoutMs: 2_000,
+                connectionTimeoutMs: 8_000,
               },
               slow: {
                 command: process.execPath,
                 args: [slowServerPath],
-                connectionTimeoutMs: 1_000,
+                // The first connect never answers, so this only has to outlast a cold start.
+                connectionTimeoutMs: 8_000,
               },
             },
           },
@@ -6245,12 +6249,8 @@ process.on("SIGINT", shutdown);`,
 
       try {
         const firstCatalog = runtime.getCatalog();
-        await waitForFileText(firstConnectMarkerPath, "", LIST_TOOLS_SERVER_LOG_TIMEOUT_MS);
-        await waitForFileText(
-          triggerLogPath,
-          "notify tools/list_changed",
-          LIST_TOOLS_SERVER_LOG_TIMEOUT_MS,
-        );
+        await waitForFileText(firstConnectMarkerPath, "", 8_000);
+        await waitForFileText(triggerLogPath, "notify tools/list_changed", 8_000);
 
         const secondCatalogPromise = runtime.getCatalog();
         const [firstCatalogResult, secondCatalog] = await Promise.all([
@@ -6285,7 +6285,8 @@ process.on("SIGINT", shutdown);`,
           await waitForPredicate(
             () => runtime.peekCatalog()?.servers.slow !== undefined,
             "the timed-out server's own catalog retry",
-            LIST_TOOLS_SERVER_LOG_TIMEOUT_MS,
+            // The retry starts a new server process, so it carries a cold start too.
+            8_000,
           );
           retriedCatalog = await runtime.getCatalog();
         } finally {
