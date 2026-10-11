@@ -213,8 +213,12 @@ export function createExtensionOxlintShards({
     return [EXTENSIONS_SHARD];
   }
 
+  // Each chunk pays the full type-graph startup, so a host with memory to spare can
+  // trade fewer, larger chunks for that repeated cost.
   const chunkSize =
-    platform === "win32" ? resolveWindowsExtensionChunkSize(env) : requestedChunkSize;
+    platform === "win32"
+      ? resolveWindowsExtensionChunkSize(env)
+      : (resolvePositiveEnvInt(env, "OPENCLAW_OXLINT_EXTENSION_CHUNK_SIZE") ?? requestedChunkSize);
   const shards: OxlintShard[] = [];
 
   if (entries.rootFiles.length > 0) {
