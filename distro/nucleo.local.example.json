@@ -7,7 +7,9 @@
     "checkout": "/home/USER/src/openclaw",
     "logs": "/home/USER/logs/nucleo",
     "env": {
-      "OPENCLAW_TEST_PROJECTS_PARALLEL": "2"
+      "OPENCLAW_TEST_PROJECTS_PARALLEL": "2",
+      "OPENCLAW_TEST_SHARD_MEMORY_MB": "3000",
+      "OPENCLAW_OXLINT_EXTENSION_CHUNK_SIZE": "40"
     }
   },
   "notifyScript": "/home/USER/bin/notify.mjs"
