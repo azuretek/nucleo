@@ -182,6 +182,12 @@
       "pr": null,
       "branch": "perf/mcp-retention-warm-cache",
       "subject": "keep the MCP retention nested run caches warm"
+    },
+    {
+      "n": 17,
+      "pr": null,
+      "branch": "perf/gateway-fixture-warm-cache",
+      "subject": "keep the gateway fixture fork caches warm"
     }
   ],
   "version": "0.0.1",
