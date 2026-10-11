@@ -1,11 +1,14 @@
 {
-  "_comment": "Copy to nucleo.local.json (gitignored) and set this host's values. The committed values are placeholders on purpose: a real host path in this public repo would leak the machine, and publish-scan refuses it. machine is the build machine the gate and build run on; notifyScript is optional and takes --subject and --body.",
+  "_comment": "Copy to nucleo.local.json (gitignored) and set this host's values. The committed values are placeholders on purpose: a real host path in this public repo would leak the machine, and publish-scan refuses it. machine is the build machine the gate and build run on; notifyScript is optional and takes --subject and --body. machine.env sets knobs the pinned repo reads on the build machine; see DISTRO.md, Build machine tuning.",
   "checkout": "/home/USER/src/openclaw",
   "logs": "/var/log/nucleo",
   "machine": {
     "ssh": "USER@HOST",
     "checkout": "/home/USER/src/openclaw",
-    "logs": "/home/USER/logs/nucleo"
+    "logs": "/home/USER/logs/nucleo",
+    "env": {
+      "OPENCLAW_TEST_PROJECTS_PARALLEL": "2"
+    }
   },
   "notifyScript": "/home/USER/bin/notify.mjs"
 }
