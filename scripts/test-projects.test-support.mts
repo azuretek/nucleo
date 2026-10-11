@@ -1834,7 +1834,48 @@ function resolveImportSpecifiers(
     : resolved;
 }
 
-const cachedImportGraphs = new Map<string, { graph: ImportGraph; additionalPaths: string }>();
+// Every path the resolver asked about while building a graph, keyed loosely enough that a later
+// path matching no key cannot have resolved any import. Extra paths that were never asked about
+// cannot change the graph, so a query naming different config files reuses it.
+function importGraphLookupKey(file: string) {
+  const ext = path.posix.extname(file);
+  const stem = ext ? file.slice(0, -ext.length) : file;
+  return stem.endsWith("/index") ? stem.slice(0, -"/index".length) : stem;
+}
+
+class ImportGraphFileSet extends Set<string> {
+  readonly lookups = new Set<string>();
+  constructor(
+    files: Iterable<string>,
+    private readonly additional: ReadonlySet<string>,
+  ) {
+    super(files);
+  }
+  override has(file: string) {
+    const found = super.has(file);
+    if (!found || this.additional.has(file)) {
+      this.lookups.add(importGraphLookupKey(file));
+    }
+    return found;
+  }
+}
+
+type CachedImportGraph = {
+  graph: ImportGraph;
+  additionalPaths: ReadonlySet<string>;
+  lookups: ReadonlySet<string>;
+};
+
+function canReuseImportGraph(cached: CachedImportGraph, additionalPaths: readonly string[]) {
+  const next = new Set(additionalPaths);
+  const changed = [
+    ...[...next].filter((file) => !cached.additionalPaths.has(file)),
+    ...[...cached.additionalPaths].filter((file) => !next.has(file)),
+  ];
+  return changed.every((file) => !cached.lookups.has(importGraphLookupKey(file)));
+}
+
+const cachedImportGraphs = new Map<string, CachedImportGraph>();
 const cachedImportGraphFiles = new Map<string, string[]>();
 const cachedImportGraphGrepMatches = new Map<string, ImportGraphEdges[] | null>();
 const cachedImportGraphEdges = new Map<string, ImportGraphEdges>();
@@ -2327,21 +2368,19 @@ function getImportGraph(
   const files = listImportGraphFilesForCwd(cwd, options);
   const fileSet = new Set(files);
   const missingPaths = additionalPaths.filter((file) => !fileSet.has(file));
-  const missingKey = missingPaths.toSorted().join("\0");
   const cacheKey = importGraphCacheKey(cwd, options);
   const cached = cachedImportGraphs.get(cacheKey);
-  if (cached?.additionalPaths === missingKey) {
+  if (cached && canReuseImportGraph(cached, missingPaths)) {
     return cached.graph;
   }
-  for (const file of missingPaths) {
-    fileSet.add(file);
-  }
+  const missing = new Set(missingPaths);
+  const resolvable = new ImportGraphFileSet([...fileSet, ...missing], missing);
   const reverseImports = new Map<string, string[]>();
   const testFiles = new Set(
     files.filter((file) => isTestFileTarget(file) && !file.endsWith(".live.test.ts")),
   );
 
-  readImportGraphEdges(cwd, files, fileSet, options.tooling);
+  readImportGraphEdges(cwd, files, resolvable, options.tooling);
   const aliases = options.resolveAliases ? getImportGraphAliases(cwd) : [];
   const aliasResolutions = new Map<string, string[]>();
   const extensions = options.tooling
@@ -2360,7 +2399,7 @@ function getImportGraph(
       for (const imported of resolveImportSpecifiers(
         file,
         specifier,
-        fileSet,
+        resolvable,
         extensions,
         aliases,
         aliasResolutions,
@@ -2374,7 +2413,11 @@ function getImportGraph(
   }
 
   const graph = { files, reverseImports, testFiles };
-  cachedImportGraphs.set(cacheKey, { graph, additionalPaths: missingKey });
+  cachedImportGraphs.set(cacheKey, {
+    graph,
+    additionalPaths: missing,
+    lookups: resolvable.lookups,
+  });
   return graph;
 }
 

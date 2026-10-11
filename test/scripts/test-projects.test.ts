@@ -832,6 +832,34 @@ describe("scripts/test-projects changed-target routing", () => {
     );
   });
 
+  it("reuses a cached import graph only while extra paths resolve no import", () => {
+    withTinyGitRepo(
+      {
+        "src/value.ts": "export const value = 1;\n",
+        "src/value.test.ts": 'import "./value.js";\n',
+        "src/deleted.consumer.test.ts": 'import "./deleted.js";\n',
+        "src/folder.consumer.test.ts": 'import "./folder";\n',
+      },
+      (cwd) => {
+        for (const config of ["tsconfig.json", ".npmrc", "patches/runtime.patch"]) {
+          expect(resolveAffectedTestsFromImportGraph(["src/value.ts", config], cwd)).toEqual([
+            "src/value.test.ts",
+          ]);
+        }
+        // A deleted source still owns its surviving consumers, whatever was cached before.
+        expect(resolveAffectedTestsFromImportGraph(["src/deleted.ts", ".npmrc"], cwd)).toEqual([
+          "src/deleted.consumer.test.ts",
+        ]);
+        expect(resolveAffectedTestsFromImportGraph(["src/folder/index.ts"], cwd)).toEqual([
+          "src/folder.consumer.test.ts",
+        ]);
+        expect(resolveAffectedTestsFromImportGraph(["src/value.ts"], cwd)).toEqual([
+          "src/value.test.ts",
+        ]);
+      },
+    );
+  });
+
   it("bounds direct importer queries to one edge and retains edited tests", () => {
     withTinyGitRepo(
       {
