@@ -16,6 +16,9 @@ node scripts/pin-and-build.mjs --apply    # run the whole chain below
 node scripts/pin-and-build.mjs --idle     # exit 0 only when no run is in progress
 node scripts/chain-status.mjs             # live snapshot of a run
 node scripts/chain-status.mjs --watch     # follow a run until it ends
+node scripts/time-tests.mjs              # dry run: what a timed test run would do
+node scripts/time-tests.mjs --apply [-- <path>...]  # time the test step alone on the build machine
+node scripts/time-tests.mjs --watch      # wait for it, then print wall time, memory peak and failures
 
 node scripts/nucleo.mjs sync    [--dry-run]   # cut or refresh the distro branch at the pin, replay our patches
 node scripts/nucleo.mjs verify               # every patch is an ancestor AND its marker is in the source
@@ -61,6 +64,8 @@ Upstream's timeouts assume CI hardware. The driver raises these on the build mac
 ## Build machine tuning
 
 `machine.env` in `nucleo.local.json` passes settings the pinned repo reads to the build machine stage, so a value that depends on that machine lives with that machine. The one that matters most is `OPENCLAW_TEST_PROJECTS_PARALLEL`: the full test suite is about 700 Vitest shards, and upstream runs only 2 at once on any host with 16 GB or less, whatever its core count. Each shard is one worker process, so set it from a measured peak, never from the core count: watch memory during a test step at the current value, divide by the shard count, and fit the new count inside the memory with no swap in use. Swap is the failure to avoid, because a swapping gate runs several times slower and its timing-sensitive tests fail.
+
+To iterate on test speed, time the test step alone with `time-tests.mjs` instead of running the chain. It runs whatever the machine checkout holds, with the same `machine.env` as the gate, and records the commit, whether the tree was dirty, the wall time, the memory and swap peaks and the failures. Give it paths after `--` to time a few files. It refuses to start during a chain or a gate, because two runs on one machine skew both.
 
 ## Setting up a host
 
