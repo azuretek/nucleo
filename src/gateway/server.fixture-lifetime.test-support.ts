@@ -7,6 +7,7 @@ import { expect, type TestContext } from "vitest";
 import { createVitestResourceOwner } from "../../scripts/lib/vitest-resource-ownership.mts";
 import { createFixtureLifetime } from "../../test/helpers/fixture-lifetime.js";
 import { runVitestShutdownCommand } from "../../test/helpers/vitest-shutdown-command.js";
+import { resolveVitestFsModuleCacheRoot } from "../../test/vitest/vitest.performance-config.js";
 import { hasErrnoCode } from "../infra/errno.js";
 
 export function createGatewayFixtureFork(
@@ -16,6 +17,14 @@ export function createGatewayFixtureFork(
   const lifetime = createFixtureLifetime();
   registerCleanup(() => lifetime.cleanup());
   const repoRoot = path.resolve(import.meta.dirname, "../..");
+  // The fork checks fixture lifetime, not cold compilation, so its transform caches persist in this
+  // checkout between runs. A fresh temp cache recompiled the gateway graph on every run and took
+  // the whole 90 second command budget on a loaded host. Only these forks write here.
+  const nestedCacheRoot = path.join(
+    resolveVitestFsModuleCacheRoot(repoRoot),
+    "nested",
+    "gateway-fixture",
+  );
   let project: Promise<{ root: string; config: string }> | undefined;
   const prepareProject = () =>
     (project ??= (async () => {
@@ -33,7 +42,7 @@ import { defineConfig } from "vitest/config";
 import { sharedVitestConfig } from ${JSON.stringify(path.join(repoRoot, "test/vitest/vitest.shared.config.ts"))};
 export default defineConfig({
   envDir: false,
-  cacheDir: ${JSON.stringify(path.join(root, ".vite"))},
+  cacheDir: ${JSON.stringify(path.join(nestedCacheRoot, "vite"))},
   plugins: sharedVitestConfig.plugins,
   resolve: sharedVitestConfig.resolve,
   test: {
@@ -44,7 +53,7 @@ export default defineConfig({
     deps: sharedVitestConfig.test.deps,
     server: sharedVitestConfig.test.server,
     fsModuleCache: sharedVitestConfig.test.fsModuleCache,
-    fsModuleCachePath: ${JSON.stringify(path.join(root, "modules"))},
+    fsModuleCachePath: ${JSON.stringify(path.join(nestedCacheRoot, "modules"))},
   },
 });
 `,
