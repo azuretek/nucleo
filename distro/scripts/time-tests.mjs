@@ -6,6 +6,9 @@
 //
 //   time-tests.mjs                      dry run: what would run, and on which commit
 //   time-tests.mjs --apply [-- <path>...]  start a timed run (all tests, or only the given paths)
+//   time-tests.mjs --apply --changed    only the tests the checkout's change selects against the pin
+//   time-tests.mjs --apply --checkout=<dir> ...  run in another checkout on the machine, such as a
+//                                       worktree holding one patch branch
 //   time-tests.mjs --status             the latest run's state and summary
 //   time-tests.mjs --watch              wait for the latest run to end, then print its summary
 //
@@ -23,7 +26,16 @@ const LOCAL = join(TOOLING, "nucleo.local.json");
 if (existsSync(LOCAL)) Object.assign(MANIFEST, JSON.parse(readFileSync(LOCAL, "utf8")));
 
 const MACHINE = MANIFEST.machine?.ssh || "";
-const CHECKOUT = MANIFEST.machine?.checkout || "";
+const CHECKOUT_FLAG = process.argv.slice(2).find((a) => a.startsWith("--checkout="));
+const CHECKOUT = CHECKOUT_FLAG ? CHECKOUT_FLAG.slice(11) : MANIFEST.machine?.checkout || "";
+if (CHECKOUT && !/^\/[A-Za-z0-9._/-]+$/.test(CHECKOUT)) {
+  console.error("checkout refused: " + CHECKOUT);
+  process.exit(2);
+}
+// Changed mode diffs the checkout against the pin, so on a patch branch it selects only what that
+// patch touches. Upstream's own test:changed diffs against origin/main, which for us is the whole
+// assembled distro.
+const PIN = String(MANIFEST.pinnedCommit || "");
 const MACHINE_LOGS = MANIFEST.machine?.logs || "";
 const LOCK = join(MANIFEST.logs || join(TOOLING, "logs"), "pin-and-build.lock");
 if ([MACHINE, CHECKOUT, MACHINE_LOGS].some((v) => !v || /USER|HOST/.test(v))) {
@@ -37,11 +49,18 @@ const ARGS = process.argv.slice(2);
 const split = ARGS.indexOf("--");
 const FLAGS = split < 0 ? ARGS : ARGS.slice(0, split);
 const PATHS = split < 0 ? [] : ARGS.slice(split + 1);
-const KNOWN = new Set(["--apply", "--status", "--watch", "--help", "-h"]);
-const unknown = FLAGS.filter((a) => !KNOWN.has(a));
+const KNOWN = new Set(["--apply", "--changed", "--status", "--watch", "--help", "-h"]);
+const unknown = FLAGS.filter((a) => !KNOWN.has(a) && !a.startsWith("--checkout="));
+const CHANGED = FLAGS.includes("--changed");
+if (CHANGED && !/^[0-9a-f]{40}$/.test(PIN)) {
+  console.error("--changed needs pinnedCommit in nucleo.json");
+  process.exit(2);
+}
 if (FLAGS.includes("--help") || FLAGS.includes("-h") || unknown.length) {
   if (unknown.length) console.error("unknown argument: " + unknown.join(" "));
-  console.error("usage: time-tests.mjs [--apply [-- <path>...]] | --status | --watch");
+  console.error(
+    "usage: time-tests.mjs [--apply [--changed] [--checkout=<dir>] [-- <path>...]] | --status | --watch",
+  );
   process.exit(unknown.length ? 2 : 0);
 }
 for (const p of PATHS) {
@@ -109,7 +128,13 @@ function chainRunning() {
   }
 }
 
-const target = PATHS.length ? PATHS.join(" ") : "(all tests)";
+const target = (
+  (CHANGED ? "(changed since pin " + PIN.slice(0, 12) + ") " : "") +
+  (PATHS.length ? PATHS.join(" ") : CHANGED ? "" : "(all tests)")
+).trim();
+const TEST_COMMAND = CHANGED
+  ? "node --import ./scripts/tsx.mjs scripts/test-projects.mts --changed " + PIN
+  : "pnpm test";
 const remote = `#!/usr/bin/env bash
 set -u; umask 022
 D=${MACHINE_LOGS}/test-time-$(date -u +%Y%m%dT%H%M%SZ)
@@ -123,7 +148,7 @@ node distro/scripts/compile-cache.mjs >> "$D/info" 2>&1 || { echo "failed: compi
 env | grep -E '^(OPENCLAW_(TEST|VITEST|OXLINT)|NODE_COMPILE_CACHE)' | sort | tr '\\n' ' ' >> "$D/info"; echo >> "$D/info"
 ( while [ "$(cat "$D/state")" = running ]; do echo "$(date +%T) $(free -m | awk '/Mem:/{print $2, $3}') $(free -m | awk '/Swap:/{print $3}') $(pgrep -fc 'vitest.mjs run')"; sleep 30; done ) > "$D/mem.tsv" &
 s=$(date +%s)
-timeout 21600 pnpm test ${PATHS.join(" ")} > "$D/test.log" 2>&1
+timeout 21600 ${TEST_COMMAND} ${PATHS.join(" ")} > "$D/test.log" 2>&1
 rc=$?
 echo "rc=$rc wall=$(( $(date +%s) - s ))s" >> "$D/info"
 awk '{if($3>u)u=$3; if($2>t)t=$2; if($4>s)s=$4; if($5>c)c=$5} END{print "peak used MB " u ", peak total MB " t ", peak swap MB " s ", peak concurrent shards " c}' "$D/mem.tsv" >> "$D/info"
@@ -133,7 +158,7 @@ if [ $rc = 0 ]; then echo done > "$D/state"; else echo "failed: rc=$rc" > "$D/st
 `;
 
 if (!FLAGS.includes("--apply")) {
-  console.log("would time " + target + " on " + MACHINE + " in its checkout, with:");
+  console.log("would time " + target + " on " + MACHINE + " in " + CHECKOUT + ", with:");
   console.log(ENV || "(no machine.env)");
   console.log("dry run: pass --apply to start it");
   process.exit(0);
