@@ -2,7 +2,10 @@ import { setImmediate as nextTurn } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 import {
   createVitestMemoryAdmission,
+  resolveVitestShardMaxWorkers,
   resolveVitestShardMemoryBytes,
+  resolveVitestShardWantedWorkers,
+  resolveVitestWorkerMemoryBytes,
 } from "../../scripts/lib/vitest-memory-admission.mts";
 import { runVitestPlans } from "../../scripts/lib/vitest-plan-scheduling.mts";
 import { createDeferred } from "../helpers/promise.js";
@@ -84,6 +87,62 @@ describe("memory-admitted Vitest shards", () => {
     await clock.advance(1_000);
     await waiting;
     expect(admitted).toBe(true);
+  });
+
+  it("grants a large shard the extra workers free memory covers", async () => {
+    let free = 12 * GIB;
+    const admit = createVitestMemoryAdmission({
+      shardBytes: 3 * GIB,
+      workerBytes: GIB,
+      maxWorkers: 4,
+      freeMemoryBytes: () => free,
+    });
+    const first = await admit(0, () => true);
+    // 12 GiB free less its own 3 GiB reservation covers up to 9 extra; the cap is 4 in all.
+    expect(first?.grantWorkers?.(8)).toBe(4);
+    const second = await admit(1, () => true);
+    // 12 - (3 + 3 extra) - 3 = 3 GiB of room: three extra workers, capped by its want of 2.
+    expect(second?.grantWorkers?.(2)).toBe(2);
+    free = 9 * GIB;
+    // Lane zero runs without free memory; 9 GiB less 6 + 4 + 3 reserved leaves no room for more.
+    const third = await admit(0, () => true);
+    expect(third?.grantWorkers?.(6)).toBe(1);
+    expect(third?.grantWorkers?.(1)).toBe(1);
+  });
+
+  it("keeps every shard on one worker unless a worker budget is configured", async () => {
+    const admit = createVitestMemoryAdmission({ shardBytes: GIB, freeMemoryBytes: () => 64 * GIB });
+    expect((await admit(0, () => true))?.grantWorkers?.(8)).toBe(1);
+    expect(resolveVitestWorkerMemoryBytes({})).toBeUndefined();
+    expect(resolveVitestWorkerMemoryBytes({ OPENCLAW_TEST_WORKER_MEMORY_MB: "1200" })).toBe(
+      1200 * 1024 ** 2,
+    );
+    expect(() => resolveVitestWorkerMemoryBytes({ OPENCLAW_TEST_WORKER_MEMORY_MB: "0" })).toThrow();
+    expect(resolveVitestShardMaxWorkers({})).toBe(4);
+    expect(resolveVitestShardMaxWorkers({ OPENCLAW_TEST_SHARD_MAX_WORKERS: "6" })).toBe(6);
+    expect(resolveVitestShardWantedWorkers(["a"])).toBe(1);
+    expect(resolveVitestShardWantedWorkers(Array.from({ length: 41 }))).toBe(3);
+    expect(resolveVitestShardWantedWorkers(undefined)).toBe(Number.MAX_SAFE_INTEGER);
+    // A whole-config shard carries no targets at all.
+    expect(resolveVitestShardWantedWorkers(null)).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it("passes the admission to the plan it started", async () => {
+    const seen: number[] = [];
+    const admit = createVitestMemoryAdmission({
+      shardBytes: GIB,
+      workerBytes: GIB,
+      freeMemoryBytes: () => 16 * GIB,
+    });
+    await runVitestPlans([0, 1], {
+      concurrency: 1,
+      shouldStop: () => false,
+      admit,
+      run: async (_plan, _index, _lane, admission) => {
+        seen.push(admission?.grantWorkers?.(3) ?? 0);
+      },
+    });
+    expect(seen).toEqual([3, 3]);
   });
 
   it("stops waiting once no work is pending", async () => {

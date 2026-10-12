@@ -21,7 +21,10 @@ import { resolveVitestHomeSelection } from "./lib/vitest-home-selection.mts";
 import { isCiLikeEnv, resolveLocalFullSuiteProfile } from "./lib/vitest-local-scheduling.mts";
 import {
   createVitestMemoryAdmission,
+  resolveVitestShardMaxWorkers,
   resolveVitestShardMemoryBytes,
+  resolveVitestShardWantedWorkers,
+  resolveVitestWorkerMemoryBytes,
   type VitestMemoryAdmission,
 } from "./lib/vitest-memory-admission.mts";
 import { resolveCiVitestPlanConcurrency, runVitestPlans } from "./lib/vitest-plan-scheduling.mts";
@@ -271,7 +274,16 @@ async function runVitestSpecs(
     isExclusive: automatic ? (spec) => isExclusiveCiTestConfig(spec.config) : undefined,
     shouldStop: () => stopScheduling || Boolean(termination.signal),
     admit,
-    run: async (spec, index) => {
+    run: async (admittedSpec, index, _lane, admission) => {
+      let spec = admittedSpec;
+      const workers =
+        admission?.grantWorkers?.(
+          resolveVitestShardWantedWorkers(spec.timingTargets ?? spec.includePatterns),
+        ) ?? 1;
+      if (workers > 1) {
+        spec = { ...spec, env: { ...spec.env, OPENCLAW_VITEST_MAX_WORKERS: String(workers) } };
+        console.error("[test] " + spec.config + " granted " + workers + " workers");
+      }
       let result: Awaited<ReturnType<typeof runLoggedVitestSpec>>;
       try {
         result = await withCacheSlot(spec, (assigned) => runLoggedVitestSpec(assigned, reports));
@@ -603,7 +615,11 @@ export async function runTestProjects(
             `[test] running ${scheduledSpecs.length} Vitest shards with parallelism ${concurrency}`,
           );
         } else {
-          admit = createVitestMemoryAdmission({ shardBytes: shardMemoryBytes });
+          admit = createVitestMemoryAdmission({
+            shardBytes: shardMemoryBytes,
+            workerBytes: resolveVitestWorkerMemoryBytes(baseEnv),
+            maxWorkers: resolveVitestShardMaxWorkers(baseEnv),
+          });
           console.error(
             `[test] running ${scheduledSpecs.length} Vitest shards with up to ${concurrency} admitted by free memory (${Math.round(shardMemoryBytes / 1024 ** 2)} MB each)`,
           );

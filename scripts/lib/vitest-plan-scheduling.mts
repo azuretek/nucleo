@@ -22,8 +22,16 @@ export async function runVitestPlans<T>(
     isExclusive?: (plan: T) => boolean;
     shouldStop: () => boolean;
     /** Optional admission: resolves a release once the lane may start, or undefined when no work remains. */
-    admit?: (lane: number, pending: () => boolean) => Promise<(() => void) | undefined>;
-    run: (plan: T, index: number, lane: number) => Promise<void>;
+    admit?: (
+      lane: number,
+      pending: () => boolean,
+    ) => Promise<((() => void) & { grantWorkers?: (wanted: number) => number }) | undefined>;
+    run: (
+      plan: T,
+      index: number,
+      lane: number,
+      admission?: { grantWorkers?: (wanted: number) => number },
+    ) => Promise<void>;
   },
 ) {
   if (plans.length === 0) {
@@ -61,7 +69,7 @@ export async function runVitestPlans<T>(
             }
             const index = next++;
             try {
-              await options.run(plans[index]!, index, lane);
+              await options.run(plans[index]!, index, lane, release);
             } catch (error) {
               errors.push(error);
             } finally {
