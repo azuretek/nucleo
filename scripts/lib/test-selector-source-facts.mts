@@ -1,5 +1,7 @@
 // Pre-install selectors use only built-ins and the shared Node executable resolver.
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import nodeModule from "node:module";
 import path from "node:path";
@@ -504,6 +506,108 @@ function parseFacts(value: unknown) {
   };
 }
 
+// Parsing every source file's imports costs about two minutes on a full checkout, and each
+// test-selection call paid it again in a fresh child. Import facts depend only on a file's
+// content and on this parser, so they are cached by content hash in a file whose name carries
+// the parser's own hash: editing this file starts a new cache. A changed file has a new hash,
+// so it is parsed again. OPENCLAW_TEST_SELECTOR_FACTS_CACHE names another file, or "0" turns
+// the cache off.
+type CachedImports = [imports: string[], typeOnlyImports: string[]];
+const FACTS_CACHE_ENV = "OPENCLAW_TEST_SELECTOR_FACTS_CACHE";
+
+function resolveFactsCachePath(): string | null {
+  const configured = process.env[FACTS_CACHE_ENV]?.trim();
+  if (configured === "0") {
+    return null;
+  }
+  if (configured) {
+    return configured;
+  }
+  const self = fileURLToPath(import.meta.url);
+  const version = createHash("sha256").update(readFileSync(self)).digest("hex").slice(0, 16);
+  return path.join(
+    path.dirname(self),
+    "..",
+    "..",
+    ".artifacts",
+    "test-selector-source-facts",
+    version + ".json",
+  );
+}
+
+function isCachedImports(value: unknown): value is CachedImports {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((list) => Array.isArray(list) && list.every((item) => typeof item === "string"))
+  );
+}
+
+function loadFactsCache(file: string): Map<string, CachedImports> {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      return new Map();
+    }
+    return new Map(
+      Object.entries(raw).filter((entry): entry is [string, CachedImports] =>
+        isCachedImports(entry[1]),
+      ),
+    );
+  } catch {
+    // Absent or unreadable: parse everything and write a fresh cache.
+    return new Map();
+  }
+}
+
+function createFactsCache() {
+  const file = resolveFactsCachePath();
+  const entries = file ? loadFactsCache(file) : new Map<string, CachedImports>();
+  const used = new Set<string>();
+  let added = 0;
+  return {
+    importFacts(source: string) {
+      if (!file) {
+        return importFacts(source);
+      }
+      const key = createHash("sha1").update(source).digest("base64url");
+      used.add(key);
+      const hit = entries.get(key);
+      if (hit) {
+        return { imports: [...hit[0]], typeOnlyImports: [...hit[1]] };
+      }
+      const facts = importFacts(source);
+      entries.set(key, [[...facts.imports], [...facts.typeOnlyImports]]);
+      added += 1;
+      return facts;
+    },
+    save() {
+      if (!file || added === 0) {
+        return;
+      }
+      try {
+        // Keep entries a concurrent scan wrote since this one loaded.
+        for (const [key, value] of loadFactsCache(file)) {
+          if (!entries.has(key)) {
+            entries.set(key, value);
+          }
+        }
+        // Old contents accumulate as files change; drop them once they outnumber live ones.
+        const kept =
+          entries.size > Math.max(100_000, used.size * 2)
+            ? [...entries].filter(([key]) => used.has(key))
+            : [...entries];
+        mkdirSync(path.dirname(file), { recursive: true });
+        const temporary = file + "." + process.pid + ".tmp";
+        writeFileSync(temporary, JSON.stringify(Object.fromEntries(kept)));
+        renameSync(temporary, file);
+      } catch {
+        // A cache that cannot be written only costs the next scan its speed.
+      }
+    },
+  };
+}
+
 /** Acquires complete JS-parsed facts with bounded asynchronous reads, joining one native child. */
 export function readTestSelectorSourceFacts(
   cwd: string,
@@ -578,6 +682,7 @@ async function readSourceFacts() {
   });
   const matchTerms = createSourceTermMatcher(parseStrings(request.terms));
   const matchingOnly = "matchingOnly" in request && request.matchingOnly === true;
+  const cache = createFactsCache();
   const readFacts = async ({ file, parseImports }: SourceFile) => {
     let source: string;
     try {
@@ -592,7 +697,7 @@ async function readSourceFacts() {
     if (matchingOnly && matches.length === 0) {
       return null;
     }
-    const facts = parseImports ? importFacts(source) : { imports: [], typeOnlyImports: [] };
+    const facts = parseImports ? cache.importFacts(source) : { imports: [], typeOnlyImports: [] };
     if (parseImports) {
       // Vitest loads these modules from config values instead of JavaScript imports.
       const configured = new Set(configuredRuntimeImports(source, file));
@@ -626,6 +731,7 @@ async function readSourceFacts() {
   if (failures.length > 0) {
     throw new AggregateError(failures, "Test selector source scan failed");
   }
+  cache.save();
   process.stdout.write(JSON.stringify(facts));
 }
 
