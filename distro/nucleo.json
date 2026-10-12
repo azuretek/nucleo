@@ -200,6 +200,24 @@
       "pr": null,
       "branch": "perf/oxlint-extension-chunk-size",
       "subject": "let any host size serial plugin lint chunks"
+    },
+    {
+      "n": 20,
+      "pr": null,
+      "branch": "perf/test-selector-facts-cache",
+      "subject": "cache test selector import facts by content"
+    },
+    {
+      "n": 21,
+      "pr": null,
+      "branch": "perf/test-consolidate-configs",
+      "subject": "run named full-suite configs as one Vitest process"
+    },
+    {
+      "n": 22,
+      "pr": null,
+      "branch": "test/mcp-timeout-retire-start-budget",
+      "subject": "give the timeout-retire MCP servers a cold-start budget"
     }
   ],
   "version": "0.0.1",
