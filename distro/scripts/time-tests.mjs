@@ -119,7 +119,8 @@ cd ${CHECKOUT} || { echo "failed: checkout" > "$D/state"; exit 1; }
 ${ENV}
 dirty=$(git status --porcelain --untracked-files=no | wc -l)
 echo "commit $(git rev-parse --short HEAD) dirty_files=$dirty target=${target}" > "$D/info"
-env | grep -E '^OPENCLAW_(TEST|VITEST|OXLINT)' | sort | tr '\\n' ' ' >> "$D/info"; echo >> "$D/info"
+node distro/scripts/compile-cache.mjs >> "$D/info" 2>&1 || { echo "failed: compile cache bound" > "$D/state"; exit 1; }
+env | grep -E '^(OPENCLAW_(TEST|VITEST|OXLINT)|NODE_COMPILE_CACHE)' | sort | tr '\\n' ' ' >> "$D/info"; echo >> "$D/info"
 ( while [ "$(cat "$D/state")" = running ]; do echo "$(date +%T) $(free -m | awk '/Mem:/{print $2, $3}') $(free -m | awk '/Swap:/{print $3}') $(pgrep -fc 'vitest.mjs run')"; sleep 30; done ) > "$D/mem.tsv" &
 s=$(date +%s)
 timeout 21600 pnpm test ${PATHS.join(" ")} > "$D/test.log" 2>&1

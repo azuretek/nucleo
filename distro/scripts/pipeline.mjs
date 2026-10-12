@@ -162,6 +162,18 @@ function pipeline() {
     }
   }
 
+  if (!dry && process.env.NODE_COMPILE_CACHE) {
+    // A shared compile cache only grows, so it is bounded before every run that would add to it.
+    const bound = spawnSync(process.execPath, [join(HERE, "compile-cache.mjs")], {
+      encoding: "utf8",
+    });
+    process.stdout.write(bound.stdout + bound.stderr);
+    if (bound.status !== 0) {
+      process.exitCode = 1;
+      return;
+    }
+  }
+
   mkdirSync(RUNS, { recursive: true });
   const id = new Date().toISOString().replace(/[:.]/g, "-");
   const record = {
