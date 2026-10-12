@@ -5252,6 +5252,7 @@ export function buildFullSuiteVitestRunPlans(args: string[], cwd = process.cwd()
     process.env.OPENCLAW_TEST_PROJECTS_LEAF_SHARDS === "1" ||
     (parallelShardCount !== null && parallelShardCount > 1) ||
     shouldExpandLocalFullSuiteShardsByDefault(process.env);
+  const consolidated = resolveConsolidatedFullSuiteConfigs(process.env);
   return fullSuiteVitestShards.flatMap((shard) => {
     if (
       process.env.OPENCLAW_TEST_SKIP_FULL_EXTENSIONS_SHARD === "1" &&
@@ -5268,7 +5269,7 @@ export function buildFullSuiteVitestRunPlans(args: string[], cwd = process.cwd()
           shard.config === FULL_EXTENSIONS_VITEST_CONFIG));
     const configs = expandShard ? shard.projects : [shard.config];
     return configs.flatMap((config) => {
-      if (expandShard && targetArgs.length === 0) {
+      if (expandShard && targetArgs.length === 0 && !consolidated.has(config)) {
         let chunks: string[][] | null = null;
         if (config === AGENTS_CORE_VITEST_CONFIG) {
           // A single non-isolated agents-core process grows until its worker can
@@ -5331,6 +5332,33 @@ export function buildFullSuiteVitestRunPlans(args: string[], cwd = process.cwd()
       ];
     });
   });
+}
+
+/**
+ * Configs whose full-suite run stays one Vitest process instead of file chunks.
+ *
+ * The chunk limits bound process lifetime for hosts that once crashed or ran out of
+ * memory, and they cost one Vitest start-up, config load and module graph per chunk:
+ * tooling alone became 445 processes of two files each. A host that has proven a
+ * config passes as one process names it here, and the process gets its parallelism
+ * from Vitest workers instead. "all" consolidates every config; a leading "-" excludes
+ * one, so "all,-test/vitest/vitest.tooling.config.ts" keeps tooling chunked.
+ */
+export function resolveConsolidatedFullSuiteConfigs(
+  env: Record<string, string | undefined> = process.env,
+): { has(config: string): boolean } {
+  const entries = (env.OPENCLAW_TEST_CONSOLIDATE_CONFIGS ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const all = entries.includes("all");
+  const excluded = new Set(
+    entries.filter((entry) => entry.startsWith("-")).map((entry) => entry.slice(1)),
+  );
+  const included = new Set(entries.filter((entry) => entry !== "all" && !entry.startsWith("-")));
+  return {
+    has: (config) => !excluded.has(config) && (all || included.has(config)),
+  };
 }
 
 function shouldUseLocalFullSuiteParallelByDefault(env = process.env) {
