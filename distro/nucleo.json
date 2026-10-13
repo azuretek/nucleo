@@ -218,6 +218,12 @@
       "pr": null,
       "branch": "test/mcp-timeout-retire-start-budget",
       "subject": "give the timeout-retire MCP servers a cold-start budget"
+    },
+    {
+      "n": 23,
+      "pr": null,
+      "branch": "perf/test-worker-recycle",
+      "subject": "recycle a reused Vitest worker once its heap passes a bound"
     }
   ],
   "version": "0.0.1",
