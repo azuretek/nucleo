@@ -135,6 +135,11 @@ const target = (
 const TEST_COMMAND = CHANGED
   ? "node --import ./scripts/tsx.mjs scripts/test-projects.mts --changed " + PIN
   : "pnpm test";
+// The bound ships with the run from this checkout: the checkout under test may be a patch worktree
+// on the pin, which has no distro/ tree, or an older one without this script.
+const COMPILE_CACHE_B64 = readFileSync(new URL("./compile-cache.mjs", import.meta.url)).toString(
+  "base64",
+);
 const remote = `#!/usr/bin/env bash
 set -u; umask 022
 D=${MACHINE_LOGS}/test-time-$(date -u +%Y%m%dT%H%M%SZ)
@@ -144,7 +149,8 @@ cd ${CHECKOUT} || { echo "failed: checkout" > "$D/state"; exit 1; }
 ${ENV}
 dirty=$(git status --porcelain --untracked-files=no | wc -l)
 echo "commit $(git rev-parse --short HEAD) dirty_files=$dirty target=${target}" > "$D/info"
-node distro/scripts/compile-cache.mjs >> "$D/info" 2>&1 || { echo "failed: compile cache bound" > "$D/state"; exit 1; }
+echo ${COMPILE_CACHE_B64} | base64 -d > "$D/compile-cache.mjs"
+node "$D/compile-cache.mjs" >> "$D/info" 2>&1 || { echo "failed: compile cache bound" > "$D/state"; exit 1; }
 env | grep -E '^(OPENCLAW_(TEST|VITEST|OXLINT)|NODE_COMPILE_CACHE)' | sort | tr '\\n' ' ' >> "$D/info"; echo >> "$D/info"
 ( while [ "$(cat "$D/state")" = running ]; do echo "$(date +%T) $(free -m | awk '/Mem:/{print $2, $3}') $(free -m | awk '/Swap:/{print $3}') $(pgrep -fc 'vitest.mjs run')"; sleep 30; done ) > "$D/mem.tsv" &
 s=$(date +%s)
