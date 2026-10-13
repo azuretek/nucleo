@@ -224,6 +224,12 @@
       "pr": null,
       "branch": "perf/test-worker-recycle",
       "subject": "recycle a reused Vitest worker once its heap passes a bound"
+    },
+    {
+      "n": 24,
+      "pr": null,
+      "branch": "fix/typecheck-core-pin",
+      "subject": "type the WAL timer stub and the Vitest project cache hook"
     }
   ],
   "version": "0.0.1",
