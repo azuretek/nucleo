@@ -7,6 +7,7 @@ import { ForksPoolWorker, type PoolOptions, type WorkerRequest } from "vitest/no
 import { isRecord } from "../../packages/normalization-core/src/record-coerce.ts";
 import { collectNodeDiagnosticReport } from "../../scripts/lib/node-diagnostic-report.mts";
 import { collectVitestForkOsDiagnostics } from "../../scripts/lib/vitest-fork-os-diagnostics.mts";
+import { applyHeapBound, resolveWorkerRecycleBytes } from "./vitest.recycling-pool.ts";
 
 const POOL_NAME = "openclaw-forks";
 const MAX_REPORT_CHARS = 64 * 1_024;
@@ -160,5 +161,9 @@ class DiagnosticForksPoolWorker extends ForksPoolWorker {
 
 export const diagnosticForksPool = {
   name: POOL_NAME,
-  createPoolWorker: (options: PoolOptions) => new DiagnosticForksPoolWorker(options),
+  createPoolWorker: (options: PoolOptions) => {
+    const worker = new DiagnosticForksPoolWorker(options);
+    const limit = resolveWorkerRecycleBytes();
+    return limit === null ? worker : applyHeapBound(worker, POOL_NAME, limit);
+  },
 };

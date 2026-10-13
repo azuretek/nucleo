@@ -9,6 +9,7 @@ import {
   narrowIncludePatternsForCli,
   relativizeScopedPatterns,
 } from "./vitest.pattern-file.ts";
+import { withWorkerRecycling } from "./vitest.recycling-pool.ts";
 import {
   nonIsolatedRunnerPath,
   repoRoot,
@@ -254,10 +255,12 @@ export function createScopedVitestConfig(
       exclude,
       ...(options?.pool
         ? {
-            pool:
+            pool: withWorkerRecycling(
               options.pool === "forks" && (scopedDir === "extensions" || options.name === "infra")
                 ? diagnosticForksPool
                 : options.pool,
+              isolate,
+            ),
           }
         : {}),
       ...(options?.fileParallelism === undefined

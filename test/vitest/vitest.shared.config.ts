@@ -23,6 +23,7 @@ import {
   createVitestProjectCachePlugin,
   loadVitestPerformanceConfig,
 } from "./vitest.performance-config.ts";
+import { withWorkerRecycling } from "./vitest.recycling-pool.ts";
 import { createRedactingReporterPlugin } from "./vitest.reporters.ts";
 import { shouldPrintVitestThrottle } from "./vitest.system-load.ts";
 import { DEFAULT_VITEST_TEST_TIMEOUT_MS } from "./vitest.timeouts.ts";
@@ -523,7 +524,7 @@ export const sharedVitestConfig = {
     unstubEnvs: true,
     unstubGlobals: true,
     isolate: false,
-    pool: workerConfig.pool,
+    pool: withWorkerRecycling(workerConfig.pool, false),
     // Native imports keep the invocation owner's isolated source-cache policy.
     execArgv: [
       ...(process.versions.bun
