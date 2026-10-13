@@ -28,15 +28,26 @@ export function createGatewayFixtureFork(
   let project: Promise<{ root: string; config: string }> | undefined;
   const prepareProject = () =>
     (project ??= (async () => {
-      const root = lifetime.createTempDir("gateway-fixture-code-");
-      await fs.symlink(
-        path.join(repoRoot, "node_modules"),
-        path.join(root, "node_modules"),
-        "junction",
-      );
+      // Vitest keys its module cache on the project root, so a fresh temp root missed the warm cache
+      // on every run. This root holds only the generated config and a node_modules link.
+      const root = path.join(nestedCacheRoot, "project");
+      await fs.mkdir(root, { recursive: true });
+      try {
+        await fs.symlink(
+          path.join(repoRoot, "node_modules"),
+          path.join(root, "node_modules"),
+          "junction",
+        );
+      } catch (error) {
+        if (!hasErrnoCode(error, "EEXIST")) {
+          throw error;
+        }
+      }
       const config = path.join(root, "vitest.config.ts");
+      // Concurrent forks write identical bytes; the rename keeps a reader from seeing a partial file.
+      const staged = `${config}.${process.pid}.tmp`;
       await fs.writeFile(
-        config,
+        staged,
         `
 import { defineConfig } from "vitest/config";
 import { sharedVitestConfig } from ${JSON.stringify(path.join(repoRoot, "test/vitest/vitest.shared.config.ts"))};
@@ -58,6 +69,7 @@ export default defineConfig({
 });
 `,
       );
+      await fs.rename(staged, config);
       return { root, config };
     })());
 
