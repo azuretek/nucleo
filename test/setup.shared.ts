@@ -1,5 +1,6 @@
 // Shared test setup installs common Vitest mocks and cleanup behavior.
 import { vi } from "vitest";
+import { installSqliteReadOnlyInProcessFixture } from "../src/infra/sqlite-readonly-in-process.test-support.js";
 import { installProcessWarningFilter } from "../src/infra/warning-filter.js";
 import { withIsolatedTestHome } from "./test-env.js";
 
@@ -39,6 +40,10 @@ vi.mock("@mariozechner/clipboard", () => ({
   watch: () => {},
   callThreadsafeFunction: () => {},
 }));
+
+// Read-only state snapshots run in this process rather than a child per read, unless this process
+// holds the database open; the worker's own tests opt back into real children.
+installSqliteReadOnlyInProcessFixture();
 
 // Ensure Vitest environment is properly set.
 process.env.VITEST = "true";

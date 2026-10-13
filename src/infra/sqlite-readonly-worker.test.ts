@@ -7,6 +7,7 @@ import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
 import { withEnvAsync } from "../test-utils/env.js";
 import { requireNodeSqlite } from "./node-sqlite.js";
 import { SQLITE_READONLY_CHILD_ARG } from "./runtime-process-entrypoints.js";
+import { useSqliteReadOnlyWorkerProcesses } from "./sqlite-readonly-in-process.test-support.js";
 import {
   captureSqliteReadOnlyWorkerLaunch,
   createScopedSqliteReadOnlyWorker,
@@ -17,6 +18,9 @@ import {
   withSqliteReadOnlyWorkerScope,
 } from "./sqlite-readonly-worker.js";
 import { prepareSqliteReadOnlyLocation } from "./sqlite-snapshot-source.js";
+
+// These tests cover the snapshot children themselves, so they keep real processes.
+useSqliteReadOnlyWorkerProcesses();
 
 const logs = vi.hoisted(() => ({ debug: vi.fn() }));
 vi.mock("../logging/subsystem.js", async (importOriginal) => {

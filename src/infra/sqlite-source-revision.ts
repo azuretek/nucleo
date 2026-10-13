@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import fs, { type BigIntStats } from "node:fs";
 import { hasErrnoCode } from "./errno.js";
+import type { SqliteReadOnlyWorkerResult } from "./sqlite-readonly-worker-protocol.js";
 
 const suffixes = ["", "-wal", "-journal"] as const;
 
@@ -84,4 +85,13 @@ export function readSqliteSourceContentVersionInProcess(pathname: string): strin
     return undefined;
   }
   return hash.digest("hex");
+}
+
+/** The child's reply for one content observation, shared with the in-process test fixture. */
+export function readSqliteSourceContentVersionResult(pathname: string): SqliteReadOnlyWorkerResult {
+  try {
+    return { ok: true, contentVersion: readSqliteSourceContentVersionInProcess(pathname) ?? "" };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : String(error) };
+  }
 }

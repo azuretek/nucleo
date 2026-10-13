@@ -3,12 +3,16 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, expect, it, vi } from "vitest";
 import { useAutoCleanupTempDirTracker } from "../../test/helpers/temp-dir.js";
+import { useSqliteReadOnlyWorkerProcesses } from "./sqlite-readonly-in-process.test-support.js";
 import {
   runSqliteReadOnlyWorker,
   runSqliteReadOnlyWorkerSync,
   withSqliteReadOnlyWorkerScope,
 } from "./sqlite-readonly-worker.js";
 import { withRetainedUpdateRuntime } from "./update-retained-runtime.js";
+
+// These tests cover the snapshot children themselves, so they keep real processes.
+useSqliteReadOnlyWorkerProcesses();
 
 const fixture = vi.hoisted(() => ({ moduleUrl: "" }));
 vi.mock("./runtime-process-entrypoints.js", async (importOriginal) => {

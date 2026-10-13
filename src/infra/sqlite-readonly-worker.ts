@@ -14,6 +14,10 @@ import {
 } from "./runtime-process-entrypoints.js";
 import { captureRuntimeWorkerSource } from "./runtime-worker-generation.js";
 import { resolveRuntimeWorkerArgv, resolveRuntimeWorkerUrl } from "./runtime-worker-url.js";
+import {
+  sqliteReadOnlyInProcessFixture,
+  type SqliteReadOnlyInProcessFixture,
+} from "./sqlite-readonly-in-process.js";
 import { retainSnapshotWork } from "./sqlite-readonly-location-cleanup.js";
 import {
   readOnlyWorkerScope,
@@ -285,6 +289,18 @@ export function runSqliteReadOnlyWorker(
   pathname: string,
   options: SqliteReadOnlyWorkerOptions,
 ): Promise<SqliteReadOnlyWorkerValue> {
+  const fixture = sqliteReadOnlyInProcessFixture.current;
+  const mode = options.mode;
+  if (fixture && (mode === "sync" || mode === "async")) {
+    return runSqliteReadOnlyRequestWithFixture(fixture, pathname, mode, options);
+  }
+  return runSqliteReadOnlyWorkerChild(pathname, options);
+}
+
+function runSqliteReadOnlyWorkerChild(
+  pathname: string,
+  options: SqliteReadOnlyWorkerOptions,
+): Promise<SqliteReadOnlyWorkerValue> {
   if (options.mode === "reclaim") {
     // Shared reclamation belongs to the allocation owner, not its first caller's scope.
     return readOnlyWorkerScope.exit(() => runSqliteReadOnlyWorkerOnce(pathname, options));
@@ -349,6 +365,30 @@ export function runSqliteReadOnlyWorker(
     () => scope.pending.delete(operation),
   );
   return operation;
+}
+
+async function runSqliteReadOnlyRequestWithFixture(
+  fixture: SqliteReadOnlyInProcessFixture,
+  pathname: string,
+  mode: "sync" | "async",
+  options: SqliteReadOnlyWorkerOptions,
+): Promise<SqliteReadOnlyWorkerValue> {
+  const scope = readOnlyWorkerScope.getStore();
+  if (scope && !scope.active) {
+    throw new Error("SQLite read-only worker scope closed");
+  }
+  options.signal?.throwIfAborted();
+  const requests = fixture.requests ?? (await fixture.load());
+  options.signal?.throwIfAborted();
+  const served =
+    mode === "sync"
+      ? requests.location(pathname, options.stagingRoot)
+      : await requests.locationAsync(pathname, options.stagingRoot);
+  if (!served) {
+    // This process may hold a lock on the source, so the request keeps its child.
+    return runSqliteReadOnlyWorkerChild(pathname, options);
+  }
+  return readSqliteReadOnlyWorkerValue({ stderr: "", stdout: JSON.stringify(served) }, mode);
 }
 
 async function runSqliteAuthProfileWorker(
@@ -523,6 +563,17 @@ export function runSqliteReadOnlyWorkerSync(
   stagingRoot: string | undefined,
   mode: "sync" | "content-version" = "sync",
 ): string {
+  const fixture = sqliteReadOnlyInProcessFixture.current;
+  if (fixture) {
+    const served =
+      mode === "content-version"
+        ? fixture.requests?.contentVersion(pathname)
+        : fixture.requests?.location(pathname, stagingRoot);
+    if (served) {
+      return readSqliteReadOnlyWorkerValue({ stderr: "", stdout: JSON.stringify(served) }, mode);
+    }
+    void fixture.load().catch(() => undefined);
+  }
   const { timeoutMs, size } = readSqliteInspectionBudget("read-only snapshot", pathname);
   const started = log.isEnabled("trace") ? performance.now() : undefined;
   const result = spawnSync(

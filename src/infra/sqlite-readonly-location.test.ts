@@ -8,6 +8,7 @@ import { withEnvAsync } from "../test-utils/env.js";
 import { requireNodeSqlite } from "./node-sqlite.js";
 import { startSqliteConcurrentWriter } from "./sqlite-concurrent-writer.test-support.js";
 import { readMainDatabasePosixLocks } from "./sqlite-posix-locks.test-support.js";
+import { useSqliteReadOnlyWorkerProcesses } from "./sqlite-readonly-in-process.test-support.js";
 import {
   prepareSqliteReadOnlyLocationInProcess,
   prepareSqliteReadOnlyLocationSyncInProcess,
@@ -19,6 +20,9 @@ import {
   prepareSqliteReadOnlyLocationSync,
 } from "./sqlite-snapshot-source.js";
 import { sqliteWorkerPreloadEnv } from "./sqlite-worker-preload.test-support.js";
+
+// These tests cover the snapshot children themselves, so they keep real processes.
+useSqliteReadOnlyWorkerProcesses();
 
 const writers: Array<ReturnType<typeof startSqliteConcurrentWriter>> = [];
 const tempDirs = useAutoCleanupTempDirTracker((cleanup) => {

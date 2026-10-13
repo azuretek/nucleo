@@ -5,23 +5,18 @@ import { SQLITE_READONLY_CHILD_ARG } from "./runtime-process-entrypoints.js";
 import {
   formatSqliteErrorCodeSuffix,
   formatSqliteReadOnlyInspectionFailure,
-  isSqliteLockError,
 } from "./sqlite-error-diagnostics.js";
 import { encodeSqliteAuthTransferFrame } from "./sqlite-readonly-auth-transfer.js";
+import { retireSqliteSnapshotPayload } from "./sqlite-readonly-location-cleanup.js";
 import {
-  releaseSnapshotTempDirectory,
-  retireSqliteSnapshotPayload,
-} from "./sqlite-readonly-location-cleanup.js";
-import {
-  createOnlineReadOnlyBackup,
-  prepareSqliteReadOnlyLocationInProcess,
-  prepareSqliteReadOnlyLocationSyncInProcess,
-  SqliteSourceChangedError,
-} from "./sqlite-readonly-location.js";
-import type { PreparedSqliteReadOnlyLocation } from "./sqlite-readonly-location.types.js";
+  handOffSqliteReadOnlyLocation,
+  runSqliteReadOnlyLocationRequest,
+  runSqliteReadOnlyLocationRequestSync,
+  sqliteReadOnlyRequestFailure,
+} from "./sqlite-readonly-location-request.js";
+import { createOnlineReadOnlyBackup } from "./sqlite-readonly-location.js";
 import {
   SQLITE_READONLY_WORKER_MAX_BUFFER,
-  SQLITE_INSPECTION_CONTENTION_PREFIX,
   isSqliteSnapshotStagingMode,
   type SqliteReadOnlyWorkerResult,
 } from "./sqlite-readonly-worker-protocol.js";
@@ -115,30 +110,20 @@ async function inspect(args: string[]): Promise<SqliteReadOnlyWorkerResult> {
       }
       return { ok: true, warnings };
     }
-    let prepared: PreparedSqliteReadOnlyLocation;
-    if (mode === "consolidated") {
-      if (!stagingRoot || path.dirname(path.resolve(pathname)) !== path.resolve(stagingRoot)) {
-        throw new Error(
-          "SQLite consolidation requires its caller-owned private snapshot directory",
-        );
-      }
-      // The backup owner admits a child staging token before reading the private
-      // WAL family. Parent loss cannot let reclamation race its native backup.
-      prepared = await createOnlineReadOnlyBackup(pathname, stagingRoot);
-    } else {
-      prepared =
-        mode === "sync"
-          ? prepareSqliteReadOnlyLocationSyncInProcess(pathname, stagingRoot)
-          : await prepareSqliteReadOnlyLocationInProcess(pathname, stagingRoot);
+    if (mode === "sync") {
+      return runSqliteReadOnlyLocationRequestSync(pathname, stagingRoot);
     }
-    releaseSnapshotTempDirectory(prepared.cleanupRoot ?? path.dirname(prepared.location));
-    return { ok: true, location: prepared.location };
+    if (mode === "async") {
+      return await runSqliteReadOnlyLocationRequest(pathname, stagingRoot);
+    }
+    if (!stagingRoot || path.dirname(path.resolve(pathname)) !== path.resolve(stagingRoot)) {
+      throw new Error("SQLite consolidation requires its caller-owned private snapshot directory");
+    }
+    // The backup owner admits a child staging token before reading the private
+    // WAL family. Parent loss cannot let reclamation race its native backup.
+    return handOffSqliteReadOnlyLocation(await createOnlineReadOnlyBackup(pathname, stagingRoot));
   } catch (error) {
-    const contention = error instanceof SqliteSourceChangedError || isSqliteLockError(error);
-    return {
-      ok: false,
-      message: `${contention ? SQLITE_INSPECTION_CONTENTION_PREFIX : ""}${formatSqliteReadOnlyInspectionFailure(error)}`,
-    };
+    return sqliteReadOnlyRequestFailure(error);
   }
 }
 
