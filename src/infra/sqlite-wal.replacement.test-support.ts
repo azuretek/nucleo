@@ -46,13 +46,13 @@ if (role === "worker") {
   }
   let periodic: (() => void) | undefined;
   const setIntervalNative = globalThis.setInterval;
-  globalThis.setInterval = (callback, delay, ...args) => {
+  globalThis.setInterval = ((callback: unknown, delay?: number, ...args: unknown[]) => {
     if (delay === 30 * 60 * 1000 && typeof callback === "function") {
       assert.equal(periodic, undefined, "Expected exactly one published WAL timer");
       periodic = () => Reflect.apply(callback, undefined, args);
     }
-    return setIntervalNative(callback, delay, ...args);
-  };
+    return setIntervalNative(callback as Parameters<typeof setIntervalNative>[0], delay, ...args);
+  }) as typeof globalThis.setInterval;
   let stale: DatabaseSync;
   try {
     stale = agent
