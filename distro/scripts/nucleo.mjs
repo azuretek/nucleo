@@ -682,7 +682,8 @@ function build() {
       "--build-arg",
       "OPENCLAW_DOCKER_BUILD_NODE_OPTIONS=--max-old-space-size=" + heap,
       "--build-arg",
-      "GIT_COMMIT=" + short,
+      // Upstream build-info refuses anything but a full 40-character commit.
+      "GIT_COMMIT=" + head,
       "--build-arg",
       "NUCLEO_UPSTREAM_TAG=" + MANIFEST.pinnedTag,
       "--build-arg",
