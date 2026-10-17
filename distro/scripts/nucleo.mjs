@@ -545,8 +545,14 @@ function changedPathsEnv() {
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean);
-  const serialized = JSON.stringify(paths);
-  if (!paths.length || Buffer.byteLength(serialized) > 32 * 1024) return {};
+  // A carried patch may edit a lint runner without changing any rule or cap. Upstream's scoping
+  // reads every runner edit as a policy change and then enforces caps on files we never touched,
+  // so the manifest names such paths and they are left out of the changed list. Any other
+  // policy input still turns the scoping off, because only a named path is left out.
+  const neutral = new Set(MANIFEST.lintScopeNeutralPaths || []);
+  const scoped = paths.filter((p) => !neutral.has(p));
+  const serialized = JSON.stringify(scoped);
+  if (!scoped.length || Buffer.byteLength(serialized) > 32 * 1024) return {};
   return { OPENCLAW_OXLINT_CHANGED_PATHS: serialized };
 }
 
