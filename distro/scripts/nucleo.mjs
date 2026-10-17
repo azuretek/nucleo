@@ -583,7 +583,18 @@ function gate() {
   const env = { ...process.env, ...changedPathsEnv() };
   let green = true;
   for (const step of MANIFEST.gates) {
-    log(`gate: pnpm run ${step}`);
+    // 'behaviours' runs every carried patch's own tests; every other step is a pnpm script.
+    const [bin, args] =
+      step === "behaviours"
+        ? [
+            process.execPath,
+            [
+              decodeURIComponent(new URL("./behaviours.mjs", import.meta.url).pathname),
+              MANIFEST.checkout,
+            ],
+          ]
+        : ["pnpm", ["run", step]];
+    log(`gate: ${step === "behaviours" ? "our patches own tests" : "pnpm run " + step}`);
     const stepFile = file.replace(/\.log$/, "-" + step + ".log");
     event("gate step " + step + " start log=" + stepFile);
     const started = Date.now();
@@ -593,7 +604,7 @@ function gate() {
     const fd = openSync(stepFile, "a");
     let r;
     try {
-      r = spawnSync("pnpm", ["run", step], {
+      r = spawnSync(bin, args, {
         cwd: MANIFEST.checkout,
         env,
         stdio: ["ignore", fd, fd],
