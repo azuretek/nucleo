@@ -188,6 +188,17 @@ const MACHINE_ENV = Object.entries(MANIFEST.machine?.env || {})
 // The commit the handoff pushed, which is what the machine gates and builds. The green record names this,
 // never the branch tip at the end of the run, because a merge during the run would move the tip.
 let HANDED_OFF = "";
+// The build number counts commits from the pinned tag, and only this host has the history to count.
+// The build machine carries a shallow tree without the tag, so it is told the number rather than
+// asked: nucleo.mjs build reads NUCLEO_BUILD_NUMBER first. Without this the build stage failed at
+// once on the machine with an unknown revision.
+function buildNumberEnv() {
+  const head = HANDED_OFF || MANIFEST.distroBranch;
+  const n = (git(["rev-list", "--count", MANIFEST.pinnedTag + ".." + head]).stdout || "").trim();
+  if (!/^[0-9]+$/.test(n))
+    throw new Error("cannot count the build number from " + MANIFEST.pinnedTag);
+  return "NUCLEO_BUILD_NUMBER=" + n + " ";
+}
 const OUR_WORKFLOW = ".github/workflows/distro.yml";
 const gh = (args, timeout = 120000) => run("gh", args, { timeout });
 function setActions(enabled) {
@@ -318,6 +329,7 @@ function runStep(where, args, timeoutMs) {
       MACHINE_CHECKOUT +
       " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS=1800000 OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS=1800000 " +
       MACHINE_ENV +
+      buildNumberEnv() +
       "node distro/scripts/pipeline.mjs " +
       args.join(" ");
     // -tt ties the remote gate to this connection, so a driver that is killed ends it too instead
