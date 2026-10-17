@@ -242,5 +242,9 @@
     "_note": "the machine the gate and build stages run on; the host-local override carries this host values",
     "logs": "/home/USER/logs/nucleo"
   },
-  "notifyScript": "/home/USER/.claude/skills/notify/scripts/notify.mjs"
+  "notifyScript": "/home/USER/.claude/skills/notify/scripts/notify.mjs",
+  "lintScopeNeutralPaths": [
+    "scripts/run-oxlint-shards.mts"
+  ],
+  "lintScopeNeutralPathsNote": "Paths a carried patch edits without changing any lint rule or cap. perf/oxlint-extension-chunk-size only sizes lint chunks for the host; naming its file keeps upstream's changed-file lint scoping on, so line caps that upstream treats as advisory for files we never touched stay advisory here."
 }
