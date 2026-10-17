@@ -23,8 +23,7 @@
   "logs": "/var/log/nucleo",
   "gates": [
     "check",
-    "behaviours",
-    "build"
+    "behaviours"
   ],
   "patches": [
     {
@@ -192,7 +191,7 @@
       "branch": "fix/boundary-dts-timeout-knob",
       "subject": "let a slow host raise the boundary dts timeout",
       "behaviour": "let a slow host raise the boundary dts timeout",
-      "behaviourCoveredBy": "build"
+      "behaviourCoveredBy": "check"
     },
     {
       "n": 19,

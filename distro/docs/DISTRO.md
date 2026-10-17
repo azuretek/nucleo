@@ -46,7 +46,7 @@ Watch with `chain-status.mjs`, never a polling loop. The driver and the gate eac
 
 ## The gate tests our patches, not upstream
 
-The gate runs `check`, then `behaviours`, then `build`. `behaviours` runs each carried patch's own tests, the ones its upstream PR adds or changes, listed as `behaviourTests` in `nucleo.json`. Upstream's full suite does not run here: upstream already runs it before every release, so running it again re-tests code we did not change.
+The gate runs `check`, then `behaviours`. The tree is compiled once, by the image build that follows a green gate: upstream's build ran in the gate and again inside the Dockerfile, so the gate's copy compiled the same code a second time (about 17 minutes) and is gone. A compile error now stops the chain at the image build, still before anything is published. `behaviours` runs each carried patch's own tests, the ones its upstream PR adds or changes, listed as `behaviourTests` in `nucleo.json`. Upstream's full suite does not run here: upstream already runs it before every release, so running it again re-tests code we did not change.
 
 - **Every carried patch names its tests.** A patch whose tests are absent from the tree fails `behaviours`, so a patch cannot ride along untested.
 - **A tooling patch with no test file of its own** names the gate step that exercises it in `behaviourCoveredBy`. It counts only when that step is in `gates`.
