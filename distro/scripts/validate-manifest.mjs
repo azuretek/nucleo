@@ -49,8 +49,8 @@ need(
 );
 need(Array.isArray(m.gates) && m.gates.length > 0, "gates must be a non-empty array");
 need(
-  m.gates.lastIndexOf("build") === m.gates.length - 1,
-  "build must be the LAST gate: everything that can reject the tree runs before a build",
+  !m.gates.includes("build"),
+  "build is not a gate: the image build after a green gate is the one compile of the tree",
 );
 
 need(m.upstream?.remote && m.upstream?.repo, "upstream.remote and upstream.repo are required");
