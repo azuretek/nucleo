@@ -16,9 +16,6 @@ node scripts/pin-and-build.mjs --apply    # run the whole chain below
 node scripts/pin-and-build.mjs --idle     # exit 0 only when no run is in progress
 node scripts/chain-status.mjs             # live snapshot of a run
 node scripts/chain-status.mjs --watch     # follow a run until it ends
-node scripts/time-tests.mjs              # dry run: what a timed test run would do
-node scripts/time-tests.mjs --apply [-- <path>...]  # time the test step alone on the build machine
-node scripts/time-tests.mjs --watch      # wait for it, then print wall time, memory peak and failures
 
 node scripts/nucleo.mjs sync    [--dry-run]   # cut or refresh the distro branch at the pin, replay our patches
 node scripts/nucleo.mjs verify               # every patch is an ancestor AND its marker is in the source
@@ -47,6 +44,14 @@ Watch with `chain-status.mjs`, never a polling loop. The driver and the gate eac
 - Without flags it prints the lock holder, the recent events on both hosts and the tail of the live step's log.
 - `--watch` streams events and exits 0 on `chain GREEN` or `chain COVERED`, 1 on `chain RED`, 3 the moment the driver dies without a result, and 2 if nothing is running. `--watch --until=change` exits at the next event of any kind.
 
+## The gate tests our patches, not upstream
+
+The gate runs `check`, then `behaviours`, then `build`. `behaviours` runs each carried patch's own tests, the ones its upstream PR adds or changes, listed as `behaviourTests` in `nucleo.json`. Upstream's full suite does not run here: upstream already runs it before every release, so running it again re-tests code we did not change.
+
+- **Every carried patch names its tests.** A patch whose tests are absent from the tree fails `behaviours`, so a patch cannot ride along untested.
+- **A tooling patch with no test file of its own** names the gate step that exercises it in `behaviourCoveredBy`. It counts only when that step is in `gates`.
+- **Changes that only speed up upstream's tests are not carried.** Making their suite faster is not part of testing our changes.
+
 ## Upstream workflows stay in the tree and never run here
 
 Upstream reads its own workflow files as source: a test-worker asset list names one, and about 164 tests parse them, so deleting them kills the test leg before a single test runs. They stay. The handoff switches Actions off, pushes, disables by id every workflow that is not `.github/workflows/distro.yml`, switches Actions back on and disables again. GitHub registers pushed workflows while Actions is off, so none can start; the first run disabled 110 with 0 runs. `distro.yml` fails if any other workflow is active, and a workflow that first appears in a new pin is caught the same way. The driver needs a GitHub token allowed to change the repository's Actions settings.
@@ -65,15 +70,9 @@ Upstream's timeouts assume CI hardware. The driver raises these on the build mac
 
 `machine.env` in `nucleo.local.json` passes settings the pinned repo reads to the build machine stage, so a value that depends on that machine lives with that machine. The one that matters most is `OPENCLAW_TEST_PROJECTS_PARALLEL`: the full test suite is about 700 Vitest shards, and upstream runs only 2 at once on any host with 16 GB or less, whatever its core count. Each shard is one worker process, so set it from a measured peak, never from the core count: watch memory during a test step at the current value, divide by the shard count, and fit the new count inside the memory with no swap in use. Swap is the failure to avoid, because a swapping gate runs several times slower and its timing-sensitive tests fail.
 
-Set `NODE_COMPILE_CACHE` in `machine.env` to an absolute directory whose name contains `compile`, on the machine's own disk. Every Node process and worker thread the tests start then reuses V8's compiled code for a module it has already compiled; the suite starts hundreds of worker threads per config, each loading the same bundled chunks, and a worker-heavy file ran 12 to 13 percent faster with it. Upstream's runners pass the variable through to every child, so nothing in the pinned repo changes. Entries are keyed by source content, so the directory grows with every pin and patch: `compile-cache.mjs` clears it once it passes 2 GB, and the pipeline and `time-tests.mjs` run it first.
-
-Set `OPENCLAW_TEST_WORKER_RECYCLE_MB` in `machine.env` once configs run as one process. With isolation off a worker keeps everything it loaded while it runs file after file, so a config run as one process grows each worker for hundreds of files; the bound makes Vitest replace a worker whose heap passed it before its next file. Measured on the build machine on `gateway-methods`: at 768 the workers peaked at 7.0 GB instead of 11.8 GB, the machine at 8.1 GB instead of 13.6 GB, for 1,628 s instead of 1,597 s, with the same 6,245 tests passing. Raise `OPENCLAW_TEST_SHARD_MEMORY_MB` with it, because the runner admits configs by that estimate and the default 3000 is below what a one-process config holds; six configs admitted at 3000 filled memory and swap and stalled the suite.
+Set `NODE_COMPILE_CACHE` in `machine.env` to an absolute directory whose name contains `compile`, on the machine's own disk. Every Node process and worker thread the tests start then reuses V8's compiled code for a module it has already compiled; the suite starts hundreds of worker threads per config, each loading the same bundled chunks, and a worker-heavy file ran 12 to 13 percent faster with it. Upstream's runners pass the variable through to every child, so nothing in the pinned repo changes. Entries are keyed by source content, so the directory grows with every pin and patch: `compile-cache.mjs` clears it once it passes 2 GB, and the pipeline runs it first.
 
 Set `OPENCLAW_TSDOWN_MAX_OLD_SPACE_MB` in `machine.env` so the build's declaration step runs two compiler groups at once. That step is most of the build, and upstream runs two groups together only when the machine's memory holds both heaps plus 768 MB headroom each; the default 12 GB heap never fits, so every group runs alone. On a 12 GB machine 4096 fits and 5120 does not: measured on the build machine, the unified declarations took 9 min 26 s at 4096 against 14 min 30 s alone, with no heap failure, a peak of 8.1 GB per compiler and a brief touch of swap before dynamic memory grew. Check the concurrency a value gets on a machine with `resolveStagedDeclarationConcurrency` in `scripts/tsdown-build.mts` before changing it.
-
-To iterate on test speed, time the test step alone with `time-tests.mjs` instead of running the chain. It runs whatever the machine checkout holds, with the same `machine.env` as the gate, and records the commit, whether the tree was dirty, the wall time, the memory and swap peaks and the failures. Give it paths after `--` to time a few files. It refuses to start during a chain or a gate, because two runs on one machine skew both.
-
-To iterate on a patch, test only what it touches. Check the patch branch out in a worktree on the build machine and run `time-tests.mjs --apply --changed --checkout=<that worktree>`. Changed mode runs upstream's own selector, `scripts/test-projects.mts --changed`, against the pinned commit instead of `origin/main`, because our `main` is the whole assembled distro and would select nearly everything. A change under `scripts/` still pulls in the whole tooling config, which is upstream's own rule for tooling changes. The full suite stays in the gate.
 
 ## Setting up a host
 

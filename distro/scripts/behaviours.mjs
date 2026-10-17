@@ -40,6 +40,24 @@ const patches = manifest.patches.filter((p) => (only ? p.n === only : true));
 let held = 0;
 const missing = [];
 for (const p of patches) {
+  // A tooling patch with no test file of its own names the gate step that exercises it, and
+  // counts only when that step is in this manifest's gates, so the claim is always checked.
+  if (
+    !(p.behaviourTests || []).length &&
+    p.behaviourCoveredBy &&
+    (manifest.gates || []).includes(p.behaviourCoveredBy)
+  ) {
+    held += 1;
+    console.log(
+      String(p.n).padStart(2) +
+        " " +
+        p.branch.padEnd(46) +
+        " GATE  covered by the " +
+        p.behaviourCoveredBy +
+        " gate step",
+    );
+    continue;
+  }
   const files = (p.behaviourTests || []).filter((f) => existsSync(checkout + "/" + f));
   if (!files.length) {
     console.log(
