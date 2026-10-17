@@ -87,6 +87,9 @@ for (const p of patches) {
   console.log(
     String(p.n).padStart(2) + " " + p.branch.padEnd(46) + mark + " " + p.behaviour.slice(0, 58),
   );
+  // A red patch prints its own test output, so the gate log shows the failing assertion
+  // rather than a bare FAIL that has to be reproduced by hand.
+  if (!ok) console.log(String((r.stdout || "") + (r.stderr || "")).slice(-6000));
   if (timedOut)
     console.log(
       "     timed out after " +
