@@ -563,7 +563,7 @@ async function runGatewayUpdateCheckOwned(
       return;
     }
     const nextAvailable: UpdateAvailable = {
-      currentVersion,
+      currentVersion: VERSION,
       latestVersion: VERSION,
       channel: "dev",
       currentSha,
