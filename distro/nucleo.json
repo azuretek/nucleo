@@ -267,7 +267,8 @@
   "current": "0.0.0",
   "forkOwnedPaths": [
     "distro",
-    ".github/workflows/distro.yml"
+    ".github/workflows/distro.yml",
+    "README.md"
   ],
   "machine": {
     "ssh": "USER@HOST",
