@@ -261,6 +261,17 @@
         "ui/src/app/app-host.document-title.test.ts",
         "src/entry.version-fast-path.test.ts"
       ]
+    },
+    {
+      "n": 29,
+      "pr": null,
+      "branch": "nucleo/update-source",
+      "subject": "read update notices from Núcleo's own releases",
+      "behaviour": "with OPENCLAW_UPDATE_GITHUB_REPO set, which the Núcleo image sets, the gateway's update check and update status read that repository's GitHub releases instead of the openclaw npm package, name the release page, and never hand a release to the package auto-updater",
+      "behaviourTests": [
+        "src/infra/update-github-releases.test.ts",
+        "src/infra/update-startup.github-releases.test.ts"
+      ]
     }
   ],
   "version": "0.0.1",
