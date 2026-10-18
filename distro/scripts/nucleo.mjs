@@ -606,7 +606,7 @@ function changedPathsEnv() {
   return { OPENCLAW_OXLINT_CHANGED_PATHS: serialized };
 }
 
-// Appends one timestamped line to this host events log, the stream chain-status.mjs follows.
+// Appends one timestamped line to this host events log, so a finished run can be read afterwards.
 function event(line) {
   try {
     mkdirSync(MANIFEST.logs, { recursive: true });

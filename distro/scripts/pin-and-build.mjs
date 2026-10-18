@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // Drives the Núcleo chain so the distro branch is always covered by a green build, with no one
-// driving the stages by hand: assemble, verify, hand over, then gate and build on the build machine.
+// driving the stages by hand: assemble, verify, then hand over. The push to the distro branch starts
+// distro.yml on GitHub, which runs the gate, builds the image and publishes the dev pre-release.
 //
 // The stages belong to pipeline.mjs and this only decides WHEN and on WHICH HOST, so the stage logic,
 // the timeouts and the run records keep one owner.
 //
-// ★ It runs whenever the distro branch is NOT covered by a green run that includes a build, which is
+// ★ It runs whenever the distro branch is NOT covered by a green distro.yml run on GitHub, which is
 // the plain statement of what a distro needs. A newer upstream release is reported, never applied:
 // the design lands the pin change and the patch adaptation together, and that adaptation is a
 // judgement rather than a step.
@@ -18,7 +19,6 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  readdirSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -33,21 +33,16 @@ const LOCAL = join(TOOLING, "nucleo.local.json");
 if (existsSync(LOCAL)) Object.assign(MANIFEST, JSON.parse(readFileSync(LOCAL, "utf8")));
 
 const APPLY = process.argv.includes("--apply");
-// The build machine and its checkout come from the manifest, never from this file: a host path or a
-// LAN address committed here is a household identifier in a public repo, and the publish scan
-// refuses it, correctly. The host-local override carries this host values.
-const MACHINE = process.env.NUCLEO_MACHINE || MANIFEST.machine?.ssh || "";
-const MACHINE_CHECKOUT = process.env.NUCLEO_MACHINE_CHECKOUT || MANIFEST.machine?.checkout || "";
-// The alert lane is one script with no model in it, and its path comes from the manifest for the same
-// reason the machine does: a path with a user name in it is a household identifier in a public repo.
+// The alert lane is one script with no model in it, and its path comes from the host-local manifest
+// override, never from this file: a path with a user name in it is a household identifier in a
+// public repo, and the publish scan refuses it, correctly.
 const NOTIFY = process.env.NUCLEO_NOTIFY || MANIFEST.notifyScript || "";
 const PIPELINE = join(HERE, "pipeline.mjs");
 const LOG_DIR = MANIFEST.logs || join(TOOLING, "logs");
-const RUNS = join(LOG_DIR, "runs");
 const LOCK = join(LOG_DIR, "pin-and-build.lock");
 const LOCK_STALE_MS = 6 * 60 * 60 * 1000;
 
-// One timestamped line per stage start and end and per chain result, the stream chain-status.mjs follows.
+// One timestamped line per stage start and end and per chain result, so a run can be read afterwards.
 const event = (line) => {
   try {
     mkdirSync(LOG_DIR, { recursive: true });
@@ -114,23 +109,42 @@ const FETCH_MAIN = [
     MANIFEST.distroBranch,
 ];
 
-// Covered means: a run record exists for exactly this distro commit, every stage in it passed, and a
-// build was among them. Anything less and the chain has something left to do.
-function coveredByGreenBuild(sha) {
-  if (!existsSync(RUNS)) return false;
-  for (const f of readdirSync(RUNS).filter((n) => n.endsWith(".json"))) {
-    let rec;
-    try {
-      rec = JSON.parse(readFileSync(join(RUNS, f), "utf8"));
-    } catch {
-      continue;
-    }
-    if (!rec || rec.inputs?.distro !== sha) continue;
-    const stages = Array.isArray(rec.stages) ? rec.stages : [];
-    if (!stages.some((s) => s.name === "build" && s.status === "ok")) continue;
-    if (stages.every((s) => s.status === "ok")) return rec.id;
+// Covered means GitHub has a successful distro.yml push run for exactly this commit, which ran the
+// gate, built the image and published it. A run still going is in hand, so the driver never hands off
+// over a build in progress. A failed run is not covered: assembling again cuts a new commit, and its
+// push is the retry.
+function githubCoverage(sha) {
+  const r = gh([
+    "api",
+    "repos/" +
+      REPO_SLUG +
+      "/actions/workflows/distro.yml/runs?event=push&per_page=20&head_sha=" +
+      sha,
+    "--jq",
+    '.workflow_runs[] | "\\(.status) \\(.conclusion // "-") \\(.html_url)"',
+  ]);
+  if (r.status !== 0) return { state: "unknown", detail: (r.stderr || "").trim() };
+  const runs = (r.stdout || "")
+    .split("\n")
+    .map((l) => l.trim().split(" "))
+    .filter((p) => p.length === 3)
+    .map(([status, conclusion, url]) => ({ status, conclusion, url }));
+  const green = runs.find((x) => x.conclusion === "success");
+  if (green) return { state: "green", url: green.url };
+  const live = runs.find((x) => x.status !== "completed");
+  if (live) return { state: "building", url: live.url };
+  return { state: runs.length ? "red" : "none", url: runs[0]?.url };
+}
+// The push starts the run a moment later, so this waits on the run appearing, the deadline only the
+// failsafe, and names it so the result can be followed there.
+function runForHandoff(sha, waitMs) {
+  const deadline = Date.now() + waitMs;
+  let cov = githubCoverage(sha);
+  while (cov.state === "none" && Date.now() < deadline) {
+    run("sleep", ["10"], { timeout: 20000 });
+    cov = githubCoverage(sha);
   }
-  return false;
+  return cov;
 }
 
 function newestUpstreamPin() {
@@ -155,8 +169,6 @@ function newestUpstreamPin() {
 const STEPS = [
   ["assembly", ["run", "--only", "assemble,verify"], 5400000],
   ["handoff", ["run", "--only", "handoff"], 900000],
-  // A full test run on the build machine outlasted four hours, and the stage was killed mid-test.
-  ["machine", ["run", "--only", "gate,build"], 8 * 60 * 60 * 1000],
 ];
 
 function alert(subject, body) {
@@ -174,31 +186,9 @@ function alert(subject, body) {
 // disables by id every workflow that is not ours before switching Actions back on. A workflow that
 // first appears in a new pin therefore never gets a run, and nothing upstream ships has to change.
 const REPO_SLUG = MANIFEST.fork.repo;
-// Per-host settings for the build machine stage, from machine.env in nucleo.local.json: knobs the
-// pinned repo exposes (test shard parallelism, worker counts) whose right value depends on that
-// machine. Names and values are checked so nothing reaches the remote shell unquoted.
-const MACHINE_ENV = Object.entries(MANIFEST.machine?.env || {})
-  .map(([name, value]) => {
-    if (!/^[A-Z][A-Z0-9_]*$/.test(name) || !/^[A-Za-z0-9._,:/-]+$/.test(String(value))) {
-      throw new Error("machine.env entry refused: " + name);
-    }
-    return name + "=" + value + " ";
-  })
-  .join("");
-// The commit the handoff pushed, which is what the machine gates and builds. The green record names this,
-// never the branch tip at the end of the run, because a merge during the run would move the tip.
+// The commit the handoff pushed, which is what GitHub gates and builds. The result names this, never
+// the branch tip at the end of the run, because a merge during the run would move the tip.
 let HANDED_OFF = "";
-// The build number counts commits from the pinned tag, and only this host has the history to count.
-// The build machine carries a shallow tree without the tag, so it is told the number rather than
-// asked: nucleo.mjs build reads NUCLEO_BUILD_NUMBER first. Without this the build stage failed at
-// once on the machine with an unknown revision.
-function buildNumberEnv() {
-  const head = HANDED_OFF || MANIFEST.distroBranch;
-  const n = (git(["rev-list", "--count", MANIFEST.pinnedTag + ".." + head]).stdout || "").trim();
-  if (!/^[0-9]+$/.test(n))
-    throw new Error("cannot count the build number from " + MANIFEST.pinnedTag);
-  return "NUCLEO_BUILD_NUMBER=" + n + " ";
-}
 const OUR_WORKFLOW = ".github/workflows/distro.yml";
 const gh = (args, timeout = 120000) => run("gh", args, { timeout });
 function setActions(enabled) {
@@ -321,35 +311,10 @@ function runStep(where, args, timeoutMs) {
       return { status: 1, stdout: "", stderr: String(e) };
     }
   }
-  if (where === "machine") {
-    const remote =
-      // umask 022: the node host refuses a temp workspace under a group-writable ancestor, and a
-      // host umask of 002 made every directory the gate created trip that check.
-      "umask 022 && cd " +
-      MACHINE_CHECKOUT +
-      " && git fetch -q --force origin '+refs/heads/main:refs/remotes/origin/main' && git checkout -q -f -B main origin/main && OPENCLAW_OXLINT_SHARD_TIMEOUT_MS=2700000 OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS=1800000 OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS=1800000 " +
-      MACHINE_ENV +
-      buildNumberEnv() +
-      "node distro/scripts/pipeline.mjs " +
-      args.join(" ");
-    // -tt ties the remote gate to this connection, so a driver that is killed ends it too instead
-    // of leaving an orphan gate running for hours on the build machine.
-    return run("ssh", ["-tt", "-o", "BatchMode=yes", MACHINE, remote], {
-      timeout: timeoutMs,
-      maxBuffer: 64 * 1024 * 1024,
-    });
-  }
   return run("node", [PIPELINE, ...args], { cwd: REPO, timeout: timeoutMs });
 }
 
 function main() {
-  if (!MACHINE || !MACHINE_CHECKOUT || /USER|HOST/.test(MACHINE + MACHINE_CHECKOUT)) {
-    say(
-      "the build machine is not set for this host: put machine.ssh and machine.checkout in nucleo.local.json",
-    );
-    process.exitCode = 1;
-    return;
-  }
   if (!takeLock()) {
     say("another run holds the lock; doing nothing");
     return;
@@ -366,7 +331,12 @@ function main() {
       process.exitCode = 1;
       return;
     }
-    const covered = coveredByGreenBuild(head);
+    const cov = githubCoverage(head);
+    if (cov.state === "unknown") {
+      say("cannot read the GitHub runs for " + head.slice(0, 12) + ": " + cov.detail);
+      process.exitCode = 1;
+      return;
+    }
     const newer = newestUpstreamPin();
     say(
       "distro " +
@@ -375,8 +345,12 @@ function main() {
         MANIFEST.pinnedTag +
         (newer && newer !== MANIFEST.pinnedTag ? " (newer upstream release: " + newer + ")" : ""),
     );
-    if (covered) {
-      say("covered by a green build: run " + covered + "; nothing to do");
+    if (cov.state === "building") {
+      say("GitHub is building it: " + cov.url + "; nothing to do");
+      return;
+    }
+    if (cov.state === "green") {
+      say("covered by a green build: " + cov.url + "; nothing to do");
       event("chain COVERED " + head);
       if (newer && newer !== MANIFEST.pinnedTag)
         say(
@@ -386,11 +360,15 @@ function main() {
         );
       appendFileSync(
         join(LOG_DIR, "pin-and-build.log"),
-        stamp() + " current " + head + " run " + covered + "\n",
+        stamp() + " current " + head + " run " + cov.url + "\n",
       );
       return;
     }
-    say("not covered by a green build: running the chain");
+    say(
+      "not covered by a green build" +
+        (cov.state === "red" ? " (its run failed: " + cov.url + ")" : "") +
+        ": running the chain",
+    );
     if (!APPLY) {
       for (const [where, args] of STEPS) say("  would run " + where + ": " + args.join(" "));
       say("dry run: pass --apply to run it");
@@ -417,32 +395,17 @@ function main() {
         return;
       }
     }
-    say("chain green");
-    // The machine records live on the build machine, so the green result is recorded here as well,
-    // against the commit the handoff pushed, which is what the coverage check reads.
-    const built = HANDED_OFF || head;
-    mkdirSync(RUNS, { recursive: true });
-    const id = stamp().replace(/[:.]/g, "-") + "-chain";
-    writeFileSync(
-      join(RUNS, id + ".json"),
-      JSON.stringify(
-        {
-          id,
-          pinTag: MANIFEST.pinnedTag,
-          inputs: { distro: built },
-          stages: [
-            { name: "assembly", status: "ok" },
-            { name: "handoff", status: "ok" },
-            { name: "build", status: "ok" },
-          ],
-          result: "green",
-        },
-        null,
-        2,
-      ) + "\n",
+    // The gate, the image and the release are GitHub's from here, so the driver's part ends at the
+    // push, and it names the run that carries the rest.
+    const handed = HANDED_OFF || head;
+    const next = runForHandoff(handed, 180000);
+    say(
+      "handed off " +
+        handed.slice(0, 12) +
+        (next.url ? ": GitHub run " + next.url : ": no GitHub run appeared yet"),
     );
-    event("chain GREEN " + built);
-    appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " green " + head + "\n");
+    event("chain HANDED " + handed + " " + (next.url || "-"));
+    appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " handed " + handed + "\n");
   } finally {
     releaseLock();
   }

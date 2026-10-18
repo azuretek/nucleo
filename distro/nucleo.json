@@ -273,7 +273,7 @@
   "releaseTagScheme": "v<version>",
   "versioning": "0.0.0 is the starting dev line, not a release. The first release is v0.0.1. A release bumps the version and tags it on main; main itself always carries the next unreleased version.",
   "gatesNote": "Each name is a pnpm script in the pinned repo, except 'behaviours', which runs distro/scripts/behaviours.mjs: every carried patch's own tests, from its upstream PR. Upstream's full suite is not re-run here, because upstream already runs it before every release; we test what our patches change. 'typecheck' does not exist upstream (ERR_PNPM_NO_SCRIPT made a false red), so the aggregate check is 'check'.",
-  "_pathsNote": "This committed manifest is the only copy. Host values (checkout, logs, build machine, alert script) live in nucleo.local.json beside it, which is gitignored; these values are shape, not any host paths.",
+  "_pathsNote": "This committed manifest is the only copy. Host values (checkout, logs, alert script) live in nucleo.local.json beside it, which is gitignored; these values are shape, not any host paths.",
   "pinnedCommit": "fc23bc864e4553c2d215e479eeec47b67a0bf943",
   "pinOwnedFiles": [
     "config/assertion-safety-baseline.txt",
@@ -307,5 +307,5 @@
     "vitestMb": 24576,
     "dockerBuildMaxGb": 80
   },
-  "cachesNote": "Bounds for what the build machine keeps between runs. cache-bound.mjs trims the Node compile cache and the Vitest module cache least recently used first before a run, and the image build trims the docker build cache to dockerBuildMaxGb after it, so a repeat run stays warm and the disk stays bounded."
+  "cachesNote": "Bounds for what a host running the gate or build keeps between runs. cache-bound.mjs trims the Node compile cache and the Vitest module cache least recently used first before a run, and the image build trims the docker build cache to dockerBuildMaxGb after it, so a repeat run stays warm and the disk stays bounded."
 }
