@@ -26,6 +26,14 @@ const MANIFEST = JSON.parse(readFileSync(join(HERE, "..", "nucleo.json"), "utf8"
 // means the host has not been set up, which is a refusal and never a guess.
 const LOCAL = join(HERE, "..", "nucleo.local.json");
 if (existsSync(LOCAL)) Object.assign(MANIFEST, JSON.parse(readFileSync(LOCAL, "utf8")));
+// On a GitHub runner the checkout and a scratch log directory are the host, so no local file is
+// needed there and nothing host-specific is committed.
+else if (process.env.GITHUB_ACTIONS === "true") {
+  MANIFEST.checkout = process.env.GITHUB_WORKSPACE;
+  MANIFEST.logs = join(process.env.RUNNER_TEMP, "nucleo-logs");
+}
+// A registry prefix means build with buildx, push, and reuse layers through the runner's cache.
+const REGISTRY = (process.env.NUCLEO_IMAGE_REGISTRY || "").trim();
 {
   const unresolved = [MANIFEST.checkout, MANIFEST.logs].filter(function (p) {
     return typeof p === "string" && p.indexOf("USER") !== -1;
@@ -688,13 +696,13 @@ function build() {
   // A build host carries a shallow tree on purpose, so it cannot count and must be told instead.
   const build =
     process.env.NUCLEO_BUILD_NUMBER ||
-    git(["rev-list", "--count", MANIFEST.pinnedTag + ".." + MANIFEST.distroBranch]);
+    git(["rev-list", "--count", MANIFEST.pinnedCommit + ".." + MANIFEST.distroBranch]);
   const short = git(["rev-parse", "--short", MANIFEST.distroBranch]);
   const tag = scheme
     .replace("<version>", MANIFEST.version)
     .replace("<build>", build)
     .replace("<sha>", short);
-  const image = MANIFEST.image.name + ":" + tag;
+  const image = (REGISTRY ? REGISTRY + "/" : "") + MANIFEST.image.name + ":" + tag;
   log(
     "image " +
       image +
@@ -716,7 +724,17 @@ function build() {
   const r = spawnSync(
     "docker",
     [
-      "build",
+      ...(REGISTRY
+        ? [
+            "buildx",
+            "build",
+            "--push",
+            "--cache-from",
+            "type=gha,scope=nucleo-image",
+            "--cache-to",
+            "type=gha,scope=nucleo-image,mode=max",
+          ]
+        : ["build"]),
       "-f",
       join(MANIFEST.checkout, "Dockerfile"),
       "-t",
@@ -752,7 +770,7 @@ function build() {
   // The build cache is what makes the next image build reuse its dependency layers, so it is
   // kept, and trimmed least recently used first to its bound rather than left to grow.
   const maxGb = MANIFEST.caches?.dockerBuildMaxGb;
-  if (maxGb) {
+  if (maxGb && !REGISTRY) {
     const p = spawnSync("docker", ["builder", "prune", "-f", "--max-used-space", maxGb + "gb"], {
       encoding: "utf8",
     });
@@ -779,7 +797,11 @@ function publish() {
     log(`would push a tag for ${head.slice(0, 12)}`);
     return;
   }
-  const buildNo = git(["rev-list", "--count", MANIFEST.pinnedTag + ".." + MANIFEST.distroBranch]);
+  const buildNo = git([
+    "rev-list",
+    "--count",
+    MANIFEST.pinnedCommit + ".." + MANIFEST.distroBranch,
+  ]);
   const short = git(["rev-parse", "--short", MANIFEST.distroBranch]);
   const tagName =
     "v" + (RELEASE ? MANIFEST.version : MANIFEST.version + "-dev." + buildNo + "." + short);
@@ -798,12 +820,115 @@ function status() {
   log(`logs: ${MANIFEST.logs}`);
 }
 
-const RUN = { sync, verify, gate, build, publish, status };
+// A green build on main is published as a dev pre-release naming its image, pin and patches. Only
+// the newest image.keepDevReleases are kept; older dev pre-releases are deleted with their tags.
+// Full releases are never selected, and their v* tags stay protected by the repository ruleset.
+export function devReleasesToPrune(releases, keep) {
+  return releases
+    .filter((r) => r.isPrerelease && /-dev\./.test(r.tagName))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(keep)
+    .map((r) => r.tagName);
+}
+function releaseDev() {
+  const head = git(["rev-parse", MANIFEST.distroBranch]);
+  const n = git(["rev-list", "--count", MANIFEST.pinnedCommit + ".." + head]);
+  const short = git(["rev-parse", "--short=10", head]);
+  const tag = "v" + MANIFEST.version + "-dev." + n + "." + short;
+  const image =
+    (REGISTRY ? REGISTRY + "/" : "") +
+    MANIFEST.image.name +
+    ":" +
+    MANIFEST.image.devTagScheme
+      .replace("<version>", MANIFEST.version)
+      .replace("<build>", n)
+      .replace("<sha>", short);
+  const lines = [
+    "Dev build of Núcleo " +
+      MANIFEST.version +
+      ", from `" +
+      head.slice(0, 12) +
+      "` on OpenClaw " +
+      MANIFEST.pinnedTag +
+      ".",
+    "",
+    "Image: `" + image + "`",
+    "",
+    "Passed the gate (check, then each patch's own tests) and the image build.",
+    "",
+    "## Patches",
+    "",
+    ...MANIFEST.patches.map(
+      (p) =>
+        "- " +
+        p.subject +
+        (p.pr
+          ? " ([openclaw#" + p.pr + "](https://github.com/openclaw/openclaw/pull/" + p.pr + "))"
+          : ""),
+    ),
+  ];
+  const notes = join(MANIFEST.logs, "dev-release-notes.md");
+  mkdirSync(MANIFEST.logs, { recursive: true });
+  writeFileSync(notes, lines.join("\n") + "\n");
+  if (DRY) return log("would publish " + tag + " for " + image);
+  const repo = MANIFEST.fork.repo;
+  const made = spawnSync(
+    "gh",
+    [
+      "release",
+      "create",
+      tag,
+      "--repo",
+      repo,
+      "--target",
+      head,
+      "--prerelease",
+      "--title",
+      tag,
+      "--notes-file",
+      notes,
+    ],
+    { encoding: "utf8" },
+  );
+  if (made.status !== 0) throw new Error("release create failed: " + (made.stderr || "").trim());
+  log("published " + tag);
+  const list = spawnSync(
+    "gh",
+    [
+      "release",
+      "list",
+      "--repo",
+      repo,
+      "--limit",
+      "200",
+      "--json",
+      "tagName,isPrerelease,createdAt",
+    ],
+    { encoding: "utf8" },
+  );
+  for (const old of devReleasesToPrune(
+    JSON.parse(list.stdout || "[]"),
+    MANIFEST.image.keepDevReleases || 10,
+  )) {
+    const d = spawnSync(
+      "gh",
+      ["release", "delete", old, "--repo", repo, "--cleanup-tag", "--yes"],
+      { encoding: "utf8" },
+    );
+    log((d.status === 0 ? "pruned " : "could not prune ") + old);
+  }
+}
+const RUN = { sync, verify, gate, build, publish, status, "release-dev": releaseDev };
 const USAGE =
   "usage: nucleo.mjs sync [--dry-run] | verify | gate | build [--dry-run] | publish [--dry-run] [--release] | status";
 // An unknown argument is a refusal, never ignored: `gate --help` once ran a full gate on a host that
 // must never run one.
-const FLAGS = { sync: ["--dry-run"], build: ["--dry-run"], publish: ["--dry-run", "--release"] };
+const FLAGS = {
+  sync: ["--dry-run"],
+  build: ["--dry-run"],
+  publish: ["--dry-run", "--release"],
+  "release-dev": ["--dry-run"],
+};
 if (ARGS.includes("--help") || ARGS.includes("-h")) {
   log(USAGE);
   process.exit(0);

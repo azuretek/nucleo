@@ -15,8 +15,8 @@
   "refuseShallowClone": true,
   "image": {
     "name": "nucleo-gateway",
-    "devTagScheme": "nucleo-<version>-dev.<build>",
-    "releaseTagScheme": "nucleo-<version>",
+    "devTagScheme": "<version>-dev.<build>",
+    "releaseTagScheme": "<version>",
     "buildFirst": 1,
     "keepDevImages": 10,
     "extensions": [
