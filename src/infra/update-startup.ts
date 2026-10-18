@@ -88,6 +88,11 @@ export function resetUpdateAvailableStateForTest(scheduler: GatewayScheduler): v
   createGatewayUpdateLifecycle(scheduler);
 }
 
+// Núcleo's own version when this build carries one (the image build sets NUCLEO_VERSION),
+// else the pinned OpenClaw version. Release comparison must use the same number the product shows.
+function nucleoVersionOrPin(): string {
+  return process.env.NUCLEO_VERSION?.trim() || VERSION;
+}
 const UPDATE_CHECK_STATE_KEY = "update.checkState";
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -152,7 +157,7 @@ function resolvePersistedUpdateAvailable(
   if (!latestVersion || !isPersistedAvailabilityForChannel({ state, channel })) {
     return null;
   }
-  const cmp = compareSemverStrings(VERSION, latestVersion);
+  const cmp = compareSemverStrings(nucleoVersionOrPin(), latestVersion);
   if (cmp == null || cmp >= 0) {
     return null;
   }
@@ -359,7 +364,7 @@ async function runGatewayUpdateCheckOwned(
       !isGatewayExternallySupervised() &&
       resolveEffectiveUpdateChannel({
         configChannel: normalizeUpdateChannel(current.update?.channel),
-        currentVersion: VERSION,
+        currentVersion,
         ...installStatus.status,
       }).channel === configuredChannel
     );
@@ -558,7 +563,7 @@ async function runGatewayUpdateCheckOwned(
       return;
     }
     const nextAvailable: UpdateAvailable = {
-      currentVersion: VERSION,
+      currentVersion,
       latestVersion: VERSION,
       channel: "dev",
       currentSha,
@@ -618,7 +623,7 @@ async function runGatewayUpdateCheckOwned(
     ? await fetchGithubReleaseTarget({
         repo: githubRepo,
         channel,
-        currentVersion: VERSION,
+        currentVersion,
         signal: params.signal,
       }).then((result) => {
         releaseUrl = result.target?.url ?? "";
@@ -642,10 +647,11 @@ async function runGatewayUpdateCheckOwned(
     writeState(nextState);
     return;
   }
-  const cmp = compareSemverStrings(VERSION, resolved.version);
+  const currentVersion = nucleoVersionOrPin();
+  const cmp = compareSemverStrings(currentVersion, resolved.version);
   if (cmp != null && cmp < 0) {
     const nextAvailable: UpdateAvailable = {
-      currentVersion: VERSION,
+      currentVersion,
       latestVersion: resolved.version,
       channel: tag,
     };
@@ -664,8 +670,8 @@ async function runGatewayUpdateCheckOwned(
       state.lastNotifiedVersion !== resolved.version || state.lastNotifiedTag !== tag;
     if (shouldNotify) {
       const updateNotice = githubRepo
-        ? `update available (${tag}): v${resolved.version} (current v${VERSION}). Release: ${releaseUrl || `https://github.com/${githubRepo}/releases`}`
-        : `update available (${tag}): v${resolved.version} (current v${VERSION}). Run: ${formatCliCommand("openclaw update")}`;
+        ? `update available (${tag}): v${resolved.version} (current v${currentVersion}). Release: ${releaseUrl || `https://github.com/${githubRepo}/releases`}`
+        : `update available (${tag}): v${resolved.version} (current v${currentVersion}). Run: ${formatCliCommand("openclaw update")}`;
       const note =
         !githubRepo && telemetryUpdate?.note
           ? sanitizeTerminalText(telemetryUpdate.note).trim().slice(0, 500)
