@@ -38,6 +38,9 @@ jobs:
       - name: publish scan (our own tooling)
         working-directory: distro
         run: node scripts/publish-scan.mjs
+      - name: tooling unit tests
+        working-directory: distro
+        run: node --test scripts/*.test.mjs
 
   # ★ Test and build run here, on GitHub's hosted runners, like Chela and Cuate: every push to main
   # (the assembled tree, or a tooling change on it) is gated, built into the image, pushed to
@@ -112,8 +115,9 @@ jobs:
       - id: build
         name: build and push the image
         run: |
-          echo "build=$(git rev-list --count "$(node -p 'require("./distro/nucleo.json").pinnedCommit')..HEAD")" >> "$GITHUB_OUTPUT"
-          node distro/scripts/nucleo.mjs build
+          build=$(node distro/scripts/nucleo.mjs build-number)
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          NUCLEO_BUILD_NUMBER="$build" node distro/scripts/nucleo.mjs build
 
   release:
     needs: image
@@ -133,6 +137,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NUCLEO_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+          NUCLEO_BUILD_NUMBER: ${{ needs.image.outputs.build }}
         run: node distro/scripts/nucleo.mjs release-dev
       - name: keep the newest ten dev images
         continue-on-error: true
