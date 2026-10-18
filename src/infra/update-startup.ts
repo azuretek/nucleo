@@ -618,6 +618,7 @@ async function runGatewayUpdateCheckOwned(
   // A distribution that ships its own releases names them as the update source, so its notices
   // never point at the upstream npm package.
   const githubRepo = resolveUpdateGithubRepo();
+  const currentVersion = nucleoVersionOrPin();
   let releaseUrl = "";
   const resolved = githubRepo
     ? await fetchGithubReleaseTarget({
@@ -627,7 +628,10 @@ async function runGatewayUpdateCheckOwned(
         signal: params.signal,
       }).then((result) => {
         releaseUrl = result.target?.url ?? "";
-        return { tag: githubReleaseNoticeTag(channel), version: result.target?.version ?? null };
+        return {
+          tag: githubReleaseNoticeTag(channel, currentVersion),
+          version: result.target?.version ?? null,
+        };
       })
     : shouldRunAutoUpdate || channel !== "stable"
       ? await resolveNpmChannelTag({ channel })
@@ -647,7 +651,6 @@ async function runGatewayUpdateCheckOwned(
     writeState(nextState);
     return;
   }
-  const currentVersion = nucleoVersionOrPin();
   const cmp = compareSemverStrings(currentVersion, resolved.version);
   if (cmp != null && cmp < 0) {
     const nextAvailable: UpdateAvailable = {

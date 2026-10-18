@@ -55,12 +55,26 @@ function compareVersions(a: string, b: string): number {
   );
 }
 
+/** A build carrying a prerelease number (0.0.1-dev.103) tracks the dev line; a final build the stable line. */
+export function isDevBuild(currentVersion?: string): boolean {
+  return Boolean(currentVersion?.includes("-"));
+}
+
 /**
- * Prereleases count on the beta and dev channels, and for an install that is itself a prerelease:
- * a dev build learns about the next dev build, and a final release only about final releases.
+ * Whether a release belongs to the line this install follows. A dev build is offered only dev
+ * releases and a stable build only final ones, so a channel never silently becomes the other.
  */
-export function includesPrereleases(channel: UpdateChannel, currentVersion?: string): boolean {
-  return channel === "beta" || channel === "dev" || Boolean(currentVersion?.includes("-"));
+export function releaseMatchesChannel(
+  release: { prerelease: boolean; version: string },
+  params: { channel: UpdateChannel; currentVersion?: string },
+): boolean {
+  if (isDevBuild(params.currentVersion)) {
+    return release.prerelease && release.version.includes("-dev.");
+  }
+  if (params.channel === "beta" || params.channel === "dev") {
+    return release.prerelease;
+  }
+  return !release.prerelease;
 }
 
 /** Picks the newest release the channel may offer, skipping drafts and unreadable tags. */
@@ -68,18 +82,17 @@ export function selectGithubReleaseTarget(
   releases: readonly GithubReleaseRecord[],
   params: { channel: UpdateChannel; currentVersion?: string },
 ): GithubReleaseTarget | null {
-  const allowPrerelease = includesPrereleases(params.channel, params.currentVersion);
   let best: GithubReleaseTarget | null = null;
   for (const release of releases) {
     if (release.draft === true || typeof release.tag_name !== "string") {
       continue;
     }
-    const prerelease = release.prerelease === true;
-    if (prerelease && !allowPrerelease) {
-      continue;
-    }
     const version = releaseTagToVersion(release.tag_name);
     if (!version) {
+      continue;
+    }
+    const prerelease = release.prerelease === true;
+    if (!releaseMatchesChannel({ prerelease, version }, params)) {
       continue;
     }
     if (best && compareVersions(version, best.version) <= 0) {
@@ -139,7 +152,10 @@ export async function fetchGithubReleaseTarget(params: {
   }
 }
 
-/** The label an update notice shows for the channel, matching the npm source's tag names. */
-export function githubReleaseNoticeTag(channel: UpdateChannel): string {
+/** The label an update notice shows for the channel: dev builds read "dev", final builds "latest". */
+export function githubReleaseNoticeTag(channel: UpdateChannel, currentVersion?: string): string {
+  if (isDevBuild(currentVersion)) {
+    return "dev";
+  }
   return channel === "stable" || channel === "extended-stable" ? "latest" : channel;
 }
