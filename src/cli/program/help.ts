@@ -4,6 +4,7 @@ import { formatDocsLink } from "../../../packages/terminal-core/src/links.js";
 import { isRich, theme } from "../../../packages/terminal-core/src/theme.js";
 import { resolveCommitHash } from "../../infra/git-commit.js";
 import { formatConsoleDiagnosticBlock } from "../../logging/json-console-line.js";
+import { formatProductVersion } from "../../nucleo-version.js";
 import { escapeRegExp } from "../../utils.js";
 import { isRootVersionInvocation } from "../argv.js";
 import { formatCliBannerLine, hasEmittedCliBanner } from "../banner.js";
@@ -78,7 +79,7 @@ export function configureProgramHelp(
   program
     .name(CLI_NAME)
     .description("")
-    .version(ctx.programVersion)
+    .version(formatProductVersion(ctx.programVersion))
     .option(
       "--container <name>",
       "Run the CLI inside a running Podman/Docker container named <name> (default: env OPENCLAW_CONTAINER)",

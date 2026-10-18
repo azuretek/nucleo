@@ -1,6 +1,7 @@
 // Handles fast version output before the full CLI graph loads.
 import { isRootVersionInvocation } from "./cli/argv.js";
 import { resolveCliContainerTarget } from "./cli/container-target.js";
+import { formatProductVersion } from "./nucleo-version.js";
 
 export function tryHandleRootVersionFastPath(
   argv: string[],
@@ -55,7 +56,8 @@ export function tryHandleRootVersionFastPath(
   resolveVersion()
     .then(({ VERSION, resolveCommitHash }) => {
       const commit = resolveCommitHash({ moduleUrl: deps.moduleUrl ?? import.meta.url });
-      output(commit ? `Núcleo ${VERSION} (${commit})` : `Núcleo ${VERSION}`);
+      const shown = formatProductVersion(VERSION);
+      output(commit ? `${shown} (${commit})` : shown);
       exit(0);
     })
     .catch(onError);
