@@ -214,6 +214,28 @@
       "subject": "type the WAL timer stub and the Vitest project cache hook",
       "behaviour": "type the WAL timer stub and the Vitest project cache hook",
       "behaviourCoveredBy": "check"
+    },
+    {
+      "n": 25,
+      "pr": 155959,
+      "branch": "nucleo/sqlite-snapshot-staging-reuse",
+      "subject": "reuse one staging directory across snapshot retries",
+      "behaviour": "a retried read-only state snapshot reuses one staging directory",
+      "behaviourTests": [
+        "src/infra/sqlite-readonly-location.copy.test.ts",
+        "src/infra/sqlite-readonly-location.test.ts"
+      ]
+    },
+    {
+      "n": 26,
+      "pr": 155300,
+      "branch": "nucleo/session-projection-config-republish",
+      "subject": "stop a republished snapshot from invalidating session rows",
+      "behaviour": "republishing an unchanged config does not invalidate session rows",
+      "behaviourTests": [
+        "src/config/runtime-snapshot.preparation.test.ts",
+        "src/gateway/session-row-projection.invalidation.test.ts"
+      ]
     }
   ],
   "version": "0.0.1",
