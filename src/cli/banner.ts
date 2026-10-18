@@ -49,12 +49,12 @@ export function formatCliBannerLine(version: string, options: BannerOptions = {}
     emojiOptions,
   );
   const rich = options.richTty ?? isRich();
-  const title = decorativePrefix("🦞", "OpenClaw", emojiOptions);
+  const title = decorativePrefix("🦞", "Núcleo", emojiOptions);
   const prefix = decorativeEmoji("🦞", emojiOptions);
   const indent = prefix ? `${prefix} ` : "";
   const columns = options.columns ?? process.stdout.columns ?? 120;
   const plainBaseLine = `${title} ${version} (${commitLabel})`;
-  const plainFullLine = tagline ? `${plainBaseLine} — ${tagline}` : plainBaseLine;
+  const plainFullLine = tagline ? `${plainBaseLine} · ${tagline}` : plainBaseLine;
   const fitsOnOneLine = visibleWidth(plainFullLine) <= columns;
   const baseLine = rich
     ? `${theme.heading(title)} ${theme.info(version)} ${theme.muted(`(${commitLabel})`)}`
@@ -64,7 +64,7 @@ export function formatCliBannerLine(version: string, options: BannerOptions = {}
   }
   const taglineText = rich ? theme.accentDim(tagline) : tagline;
   return fitsOnOneLine
-    ? `${baseLine} ${rich ? theme.muted("—") : "—"} ${taglineText}`
+    ? `${baseLine} ${rich ? theme.muted("·") : "·"} ${taglineText}`
     : `${baseLine}\n${" ".repeat(indent.length)}${taglineText}`;
 }
 
