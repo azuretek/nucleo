@@ -310,6 +310,10 @@ RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       test "$(node /app/openclaw.mjs --version | cut -d ' ' -f 2)" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
     fi
 
+# Set to owner/repo to read update notices from that repository's GitHub releases instead of npm.
+ARG OPENCLAW_UPDATE_GITHUB_REPO=""
+ENV OPENCLAW_UPDATE_GITHUB_REPO=${OPENCLAW_UPDATE_GITHUB_REPO}
+
 # Keep pnpm available in the runtime image for container-local workflows.
 # Use a shared Corepack home so the non-root `node` user does not need a
 # first-run network fetch when invoking pnpm. Warm in /app to also record
