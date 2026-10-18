@@ -23,6 +23,11 @@ import {
   resolveGitRepositoryMetadata,
 } from "./update-git-metadata.js";
 import { readBuiltRuntimeCommit, readGitRuntimeArtifactStatus } from "./update-git-runtime.js";
+import {
+  fetchGithubReleaseTarget,
+  githubReleaseNoticeTag,
+  resolveUpdateGithubRepo,
+} from "./update-github-releases.js";
 import { detectGlobalInstallManagerForRoot } from "./update-global.js";
 import { updateInstallRootsMatch } from "./update-install-root.js";
 import { UPDATE_NETWORK_TIMEOUT_MS } from "./update-network-budget.js";
@@ -608,6 +613,21 @@ export async function checkUpdateStatus(params: {
   const resolveRegistryChannel = (status: UpdateInstallIdentity) =>
     params.registryChannel ?? params.resolveRegistryChannel?.(status);
   const fetchRegistry = async (channel: UpdateChannel | undefined): Promise<RegistryStatus> => {
+    const githubRepo = resolveUpdateGithubRepo();
+    if (githubRepo) {
+      const { VERSION } = await import("../version.js");
+      const release = await fetchGithubReleaseTarget({
+        repo: githubRepo,
+        channel: channel ?? "stable",
+        currentVersion: VERSION,
+        timeoutMs,
+      });
+      return {
+        latestVersion: release.target?.version ?? null,
+        ...(channel ? { tag: githubReleaseNoticeTag(channel) } : {}),
+        error: release.error,
+      };
+    }
     const result = await resolveNpmChannelTag({ channel: channel ?? "stable", timeoutMs });
     return {
       latestVersion: result.version,
