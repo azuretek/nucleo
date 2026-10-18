@@ -17,6 +17,7 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { nextDevBuildNumber, tagNamesFromLsRemote } from "./build-number.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MANIFEST = JSON.parse(readFileSync(join(HERE, "..", "nucleo.json"), "utf8"));
@@ -692,11 +693,7 @@ function gate() {
 function build() {
   const head = git(["rev-parse", MANIFEST.distroBranch]);
   const scheme = RELEASE ? MANIFEST.image.releaseTagScheme : MANIFEST.image.devTagScheme;
-  // ★ The build number has one owner and it is the assembly host, which has the history to count.
-  // A build host carries a shallow tree on purpose, so it cannot count and must be told instead.
-  const build =
-    process.env.NUCLEO_BUILD_NUMBER ||
-    git(["rev-list", "--count", MANIFEST.pinnedCommit + ".." + MANIFEST.distroBranch]);
+  const build = devBuildNumber();
   const short = git(["rev-parse", "--short", MANIFEST.distroBranch]);
   const tag = scheme
     .replace("<version>", MANIFEST.version)
@@ -797,11 +794,7 @@ function publish() {
     log(`would push a tag for ${head.slice(0, 12)}`);
     return;
   }
-  const buildNo = git([
-    "rev-list",
-    "--count",
-    MANIFEST.pinnedCommit + ".." + MANIFEST.distroBranch,
-  ]);
+  const buildNo = devBuildNumber();
   const short = git(["rev-parse", "--short", MANIFEST.distroBranch]);
   const tagName =
     "v" + (RELEASE ? MANIFEST.version : MANIFEST.version + "-dev." + buildNo + "." + short);
@@ -820,6 +813,38 @@ function status() {
   log(`logs: ${MANIFEST.logs}`);
 }
 
+// ★ The dev build number only goes up; build-number.mjs owns the rule. One CI run computes it once
+// (`nucleo.mjs build-number`) and hands it to the image and release jobs as NUCLEO_BUILD_NUMBER, so the
+// image tag and the release tag of one run always agree. Without it, the number is read from the
+// fork's tags here.
+function devBuildNumber() {
+  const told = (process.env.NUCLEO_BUILD_NUMBER || "").trim();
+  if (told) {
+    if (!/^[0-9]+$/.test(told)) throw new Error("NUCLEO_BUILD_NUMBER is not a number: " + told);
+    return told;
+  }
+  const head = git(["rev-parse", MANIFEST.distroBranch]);
+  const listed = gitTry([
+    "ls-remote",
+    "--tags",
+    MANIFEST.fork.remote,
+    "refs/tags/v" + MANIFEST.version + "-dev.*",
+  ]);
+  if (!listed.ok)
+    throw new Error("cannot read the fork's dev tags, so the build number is unknown");
+  return String(
+    nextDevBuildNumber({
+      tags: tagNamesFromLsRemote(listed.out),
+      version: MANIFEST.version,
+      sha: head.slice(0, 10),
+      fallback: Number(git(["rev-list", "--count", MANIFEST.pinnedCommit + ".." + head])),
+    }),
+  );
+}
+function buildNumber() {
+  console.log(devBuildNumber());
+}
+
 // A green build on main is published as a dev pre-release naming its image, pin and patches. Only
 // the newest image.keepDevReleases are kept; older dev pre-releases are deleted with their tags.
 // Full releases are never selected, and their v* tags stay protected by the repository ruleset.
@@ -832,7 +857,7 @@ export function devReleasesToPrune(releases, keep) {
 }
 function releaseDev() {
   const head = git(["rev-parse", MANIFEST.distroBranch]);
-  const n = git(["rev-list", "--count", MANIFEST.pinnedCommit + ".." + head]);
+  const n = devBuildNumber();
   const short = git(["rev-parse", "--short=10", head]);
   const tag = "v" + MANIFEST.version + "-dev." + n + "." + short;
   const image =
@@ -918,9 +943,18 @@ function releaseDev() {
     log((d.status === 0 ? "pruned " : "could not prune ") + old);
   }
 }
-const RUN = { sync, verify, gate, build, publish, status, "release-dev": releaseDev };
+const RUN = {
+  sync,
+  verify,
+  gate,
+  build,
+  publish,
+  status,
+  "release-dev": releaseDev,
+  "build-number": buildNumber,
+};
 const USAGE =
-  "usage: nucleo.mjs sync [--dry-run] | verify | gate | build [--dry-run] | publish [--dry-run] [--release] | status";
+  "usage: nucleo.mjs sync [--dry-run] | verify | gate | build [--dry-run] | publish [--dry-run] [--release] | status | release-dev [--dry-run] | build-number";
 // An unknown argument is a refusal, never ignored: `gate --help` once ran a full gate on a host that
 // must never run one.
 const FLAGS = {
