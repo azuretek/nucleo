@@ -6,7 +6,10 @@ import { writePersistedInstalledPluginIndex } from "../plugins/installed-plugin-
 import { readPersistedInstalledPluginIndex } from "../plugins/installed-plugin-index-store.js";
 import { resolveRetainedManagedNpmInstallMarkerPath } from "../plugins/managed-npm-retention.js";
 import { cleanupTrackedTempDirs, makeTrackedTempDir } from "../plugins/test-helpers/fs-fixtures.js";
-import { maybeRepairStaleManagedNpmBundledPlugins } from "./doctor-plugin-registry.js";
+import {
+  maybeRepairPluginRegistryState,
+  maybeRepairStaleManagedNpmBundledPlugins,
+} from "./doctor-plugin-registry.js";
 
 // A host that ran upstream OpenClaw has @openclaw/lobster installed from npm. Núcleo ships its
 // patched lobster bundled, so the first doctor run on Núcleo must retire that npm copy and its
@@ -81,10 +84,9 @@ async function seedUpstreamNpmLobster(stateDir: string) {
   return { packageDir, installRecords };
 }
 
-function sweep(stateDir: string, bundledRoot: string) {
-  return maybeRepairStaleManagedNpmBundledPlugins({
+function doctorParams(stateDir: string, bundledRoot: string) {
+  return {
     stateDir,
-    candidates: [],
     env: {
       OPENCLAW_BUNDLED_PLUGINS_DIR: bundledRoot,
       OPENCLAW_TEST_TRUST_BUNDLED_PLUGINS_DIR: "1",
@@ -93,7 +95,13 @@ function sweep(stateDir: string, bundledRoot: string) {
     },
     config: { plugins: { allow: ["lobster"], entries: { lobster: { enabled: true } } } },
     prompter: { shouldRepair: true },
-  });
+  };
+}
+
+// The sweep alone finds the shadowing npm copy and returns repaired records; the doctor step
+// around it is what deletes the package and persists the index, which is what a host sees.
+function sweep(stateDir: string, bundledRoot: string) {
+  return maybeRepairStaleManagedNpmBundledPlugins(doctorParams(stateDir, bundledRoot));
 }
 
 describe("Núcleo bundled lobster replaces an upstream npm install", () => {
@@ -110,9 +118,8 @@ describe("Núcleo bundled lobster replaces an upstream npm install", () => {
     writeBundledLobster(bundledRoot, readLobsterPackageJson());
     const { packageDir } = await seedUpstreamNpmLobster(stateDir);
 
-    const result = sweep(stateDir, bundledRoot);
+    await maybeRepairPluginRegistryState(doctorParams(stateDir, bundledRoot));
 
-    expect(result).not.toBeNull();
     expect(fs.existsSync(packageDir)).toBe(false);
     expect(
       (await readPersistedInstalledPluginIndex({ stateDir }))?.installRecords,
