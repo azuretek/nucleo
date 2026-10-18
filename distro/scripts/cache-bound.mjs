@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Bound the caches the build machine keeps between runs, oldest entries first.
+// Bound the caches a host running the gate or build keeps between runs, oldest entries first.
 //
 // Two caches make a repeat run cheaper and only ever grow:
 // - NODE_COMPILE_CACHE: V8's compiled code per module, shared by every Node process and worker the
