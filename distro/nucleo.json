@@ -258,7 +258,8 @@
         "src/cli/program/error-output.test.ts",
         "src/cli/failure-output.test.ts",
         "src/cli/program/root-command-descriptions.test.ts",
-        "ui/src/app/app-host.document-title.test.ts"
+        "ui/src/app/app-host.document-title.test.ts",
+        "src/entry.version-fast-path.test.ts"
       ]
     }
   ],
