@@ -22,7 +22,8 @@
     "extensions": [
       "lobster"
     ],
-    "extensionsNote": "Plugins upstream publishes on their own and the Dockerfile leaves out unless named in OPENCLAW_EXTENSIONS. lobster is built in because a carried patch changes it (fix/lobster-llm-adapter-current), so the image runs the code the gate tested instead of a separately installed copy."
+    "extensionsNote": "Plugins upstream publishes on their own and the Dockerfile leaves out unless named in OPENCLAW_EXTENSIONS. lobster is built in because a carried patch changes it (fix/lobster-llm-adapter-current), so the image runs the code the gate tested instead of a separately installed copy.",
+    "keepDevReleases": 10
   },
   "logs": "/var/log/nucleo",
   "gates": [
