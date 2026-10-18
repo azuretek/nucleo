@@ -619,7 +619,7 @@ export async function checkUpdateStatus(params: {
       const release = await fetchGithubReleaseTarget({
         repo: githubRepo,
         channel: channel ?? "stable",
-        currentVersion: VERSION,
+        currentVersion: process.env.NUCLEO_VERSION?.trim() || VERSION,
         timeoutMs,
       });
       return {
