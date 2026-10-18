@@ -300,6 +300,8 @@ RUN --mount=from=dependency-inputs,source=/app/scripts/docker/verify-fs-safe-nat
 
 # Validate the three version surfaces in every release-built runtime variant.
 ARG OPENCLAW_DOCKER_BUILD_VERSION
+ARG NUCLEO_VERSION=""
+ENV NUCLEO_VERSION=${NUCLEO_VERSION}
 RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       test "$(node -p "require(\"/app/package.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
       test "$(node -p "require(\"/app/dist/build-info.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
