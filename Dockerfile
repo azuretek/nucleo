@@ -163,7 +163,11 @@ RUN pnpm_config_verify_deps_before_run=false pnpm canvas:a2ui:bundle || \
 ENV OPENCLAW_PREFER_PNPM=1
 # Correction-release sources keep the base package version; official images
 # stamp the complete release version before generating their build metadata.
-RUN set -eu; \
+# build-all keeps a content-addressed cache of each step's outputs under .artifacts; a cache
+# mount keeps it across image builds, so a step whose inputs did not change restores its
+# outputs instead of compiling again. It is never part of an image layer.
+RUN --mount=type=cache,id=openclaw-build-all-cache,target=/app/.artifacts/build-all-cache,sharing=locked \
+    set -eu; \
     selected_plugin_dirs="$(cat /tmp/openclaw-selected-plugin-dirs)"; \
     if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       pnpm pkg set "version=$OPENCLAW_DOCKER_BUILD_VERSION"; \
