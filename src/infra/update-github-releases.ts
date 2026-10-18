@@ -40,7 +40,7 @@ export function releaseTagToVersion(tag: string): string | null {
   const bare = tag.trim().replace(/^v/, "");
   const withCommit = /^(\d+\.\d+\.\d+-[0-9A-Za-z-]+\.\d+)\.[0-9a-f]{7,40}$/.exec(bare);
   if (withCommit) {
-    return withCommit[1];
+    return withCommit[1] ?? null;
   }
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(bare) ? bare : null;
 }
