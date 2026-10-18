@@ -45,6 +45,11 @@ import {
 import { compareSemverStrings, resolveNpmChannelTag } from "./update-check.js";
 import { devUpdateTargetFromGitTarget } from "./update-dev-target.js";
 import { resolveDevGitCommits } from "./update-git-metadata.js";
+import {
+  fetchGithubReleaseTarget,
+  githubReleaseNoticeTag,
+  resolveUpdateGithubRepo,
+} from "./update-github-releases.js";
 import { resolveStartupInstallStatus, withUpdateInstallStatus } from "./update-install-status.js";
 import { runCampaignUpdate, type AutoUpdateRunner } from "./update-startup-auto-run.js";
 import {
@@ -605,8 +610,21 @@ async function runGatewayUpdateCheckOwned(
   }
 
   const channel = configuredChannel;
-  const resolved =
-    shouldRunAutoUpdate || channel !== "stable"
+  // A distribution that ships its own releases names them as the update source, so its notices
+  // never point at the upstream npm package.
+  const githubRepo = resolveUpdateGithubRepo();
+  let releaseUrl = "";
+  const resolved = githubRepo
+    ? await fetchGithubReleaseTarget({
+        repo: githubRepo,
+        channel,
+        currentVersion: VERSION,
+        signal: params.signal,
+      }).then((result) => {
+        releaseUrl = result.target?.url ?? "";
+        return { tag: githubReleaseNoticeTag(channel), version: result.target?.version ?? null };
+      })
+    : shouldRunAutoUpdate || channel !== "stable"
       ? await resolveNpmChannelTag({ channel })
       : {
           tag: "latest",
@@ -645,10 +663,13 @@ async function runGatewayUpdateCheckOwned(
     const shouldNotify =
       state.lastNotifiedVersion !== resolved.version || state.lastNotifiedTag !== tag;
     if (shouldNotify) {
-      const updateNotice = `update available (${tag}): v${resolved.version} (current v${VERSION}). Run: ${formatCliCommand("openclaw update")}`;
-      const note = telemetryUpdate?.note
-        ? sanitizeTerminalText(telemetryUpdate.note).trim().slice(0, 500)
-        : undefined;
+      const updateNotice = githubRepo
+        ? `update available (${tag}): v${resolved.version} (current v${VERSION}). Release: ${releaseUrl || `https://github.com/${githubRepo}/releases`}`
+        : `update available (${tag}): v${resolved.version} (current v${VERSION}). Run: ${formatCliCommand("openclaw update")}`;
+      const note =
+        !githubRepo && telemetryUpdate?.note
+          ? sanitizeTerminalText(telemetryUpdate.note).trim().slice(0, 500)
+          : undefined;
       params.log.info(note ? `${updateNotice} Note: ${note}` : updateNotice);
       nextState.lastNotifiedVersion = resolved.version;
       nextState.lastNotifiedTag = tag;
@@ -662,7 +683,16 @@ async function runGatewayUpdateCheckOwned(
       });
     }
 
-    if (shouldRunAutoUpdate && (channel === "stable" || channel === "beta")) {
+    // Releases from a repository are images, replaced by whoever runs them, so there is nothing
+    // for the package updater to apply.
+    if (githubRepo && shouldRunAutoUpdate) {
+      params.log.info("auto-update skipped: updates are releases of " + githubRepo, {
+        version: resolved.version,
+        tag,
+      });
+    }
+
+    if (!githubRepo && shouldRunAutoUpdate && (channel === "stable" || channel === "beta")) {
       const lastAttemptAt = state.autoLastAttemptAt ? Date.parse(state.autoLastAttemptAt) : null;
       const recentAttemptForSameVersion =
         state.autoLastAttemptVersion === resolved.version &&
