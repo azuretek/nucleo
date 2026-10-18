@@ -760,7 +760,10 @@ function build() {
       "--build-arg",
       "NUCLEO_UPSTREAM_COMMIT=" + head,
       "--build-arg",
-      "OPENCLAW_DOCKER_BUILD_VERSION=" + imageVersion,
+      "OPENCLAW_DOCKER_BUILD_VERSION=" + MANIFEST.pinnedTag.replace(/^v/, ""),
+      "--build-arg",
+      // Núcleo's own number, carried beside the pin version instead of replacing it.
+      "NUCLEO_VERSION=" + imageVersion,
       "--build-arg",
       // Update notices name this fork's releases, never the upstream npm package (nucleo/update-source).
       "OPENCLAW_UPDATE_GITHUB_REPO=" + MANIFEST.fork.repo,

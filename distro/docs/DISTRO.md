@@ -58,6 +58,8 @@ Upstream reads its own workflow files as source: a test-worker asset list names 
 
 The image builds in the plugins listed in `image.extensions`, passed to the Dockerfile as `OPENCLAW_EXTENSIONS`. Upstream publishes those plugins separately and leaves them out of the image otherwise. `lobster` is listed because a carried patch changes it, so the image runs the lobster code the gate tested.
 
+**The image carries two versions, and only one is OpenClaw's.** `OPENCLAW_DOCKER_BUILD_VERSION` is the pin's own version, so `package.json`, `build-info.json` and every plugin compatibility check see exactly what upstream shipped. Núcleo's number travels beside it as `NUCLEO_VERSION`, which is what `nucleo --version` shows and what the release check compares. A build of ours is therefore never mistaken for an upstream version, and the compatibility shim that stood in for it is gone.
+
 The image's update notices name this fork's releases, never the upstream npm package. The build passes `OPENCLAW_UPDATE_GITHUB_REPO` (the fork's `owner/repo`) to the Dockerfile, which keeps it as an environment variable, and `nucleo/update-source` makes the update check read that repository's GitHub releases when it is set. A dev image reports its full version, `<version>-dev.<build>`, so one dev build can see that the next is newer, and a release is never handed to the package auto-updater, because an image is replaced, not updated in place.
 
 ## Setting up a host
