@@ -417,6 +417,7 @@ RUN --mount=type=cache,id=openclaw-bookworm-apt-cache,target=/var/cache/apt,shar
 
 # Expose the CLI binary without requiring npm global writes as non-root.
 RUN ln -sf /app/openclaw.mjs /usr/local/bin/openclaw \
+ && ln -sf /app/openclaw.mjs /usr/local/bin/nucleo \
  && chmod 755 /app/openclaw.mjs
 
 # Pre-create default named-volume mount points so first-run Docker volumes copy
