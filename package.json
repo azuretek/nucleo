@@ -324,7 +324,6 @@
     "!dist/extensions/kimi-coding/**",
     "!dist/extensions/line/**",
     "!dist/extensions/llama-cpp/**",
-    "!dist/extensions/lobster/**",
     "!dist/extensions/longcat/**",
     "!dist/extensions/mattermost/**",
     "!dist/extensions/memory-lancedb/**",

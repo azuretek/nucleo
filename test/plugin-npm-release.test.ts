@@ -659,6 +659,7 @@ describe("collectPublishablePluginPackages", () => {
     );
     for (const { id, minHostVersion, publishToNpm = true } of [
       { id: "cua-computer", minHostVersion: ">=2026.9.6", publishToNpm: false },
+      { id: "lobster", minHostVersion: ">=2026.4.25" },
       { id: "logbook", minHostVersion: ">=2026.9.5" },
       { id: "memory-wiki", minHostVersion: ">=2026.9.4" },
       { id: "onepassword", minHostVersion: ">=2026.9.4" },
