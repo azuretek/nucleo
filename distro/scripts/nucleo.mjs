@@ -694,6 +694,9 @@ function build() {
   const head = git(["rev-parse", MANIFEST.distroBranch]);
   const scheme = RELEASE ? MANIFEST.image.releaseTagScheme : MANIFEST.image.devTagScheme;
   const build = devBuildNumber();
+  // ★ A dev image carries its full dev version, so the update check can tell one dev build from the
+  // next: every dev image used to report the bare version, which no release could ever be newer than.
+  const imageVersion = RELEASE ? MANIFEST.version : MANIFEST.version + "-dev." + build;
   const short = git(["rev-parse", "--short", MANIFEST.distroBranch]);
   const tag = scheme
     .replace("<version>", MANIFEST.version)
@@ -746,13 +749,16 @@ function build() {
       "--build-arg",
       "NUCLEO_UPSTREAM_COMMIT=" + head,
       "--build-arg",
-      "OPENCLAW_DOCKER_BUILD_VERSION=" + MANIFEST.version,
+      "OPENCLAW_DOCKER_BUILD_VERSION=" + imageVersion,
+      "--build-arg",
+      // Update notices name this fork's releases, never the upstream npm package (nucleo/update-source).
+      "OPENCLAW_UPDATE_GITHUB_REPO=" + MANIFEST.fork.repo,
       // Plugins the Dockerfile leaves out unless named: lobster carries one of our patches.
       ...(MANIFEST.image.extensions?.length
         ? ["--build-arg", "OPENCLAW_EXTENSIONS=" + MANIFEST.image.extensions.join(",")]
         : []),
       "--label",
-      "org.opencontainers.image.version=" + MANIFEST.version,
+      "org.opencontainers.image.version=" + imageVersion,
       "--label",
       "org.opencontainers.image.revision=" + head,
       "--label",

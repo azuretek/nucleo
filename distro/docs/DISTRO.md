@@ -56,6 +56,8 @@ Upstream reads its own workflow files as source: a test-worker asset list names 
 
 The image builds in the plugins listed in `image.extensions`, passed to the Dockerfile as `OPENCLAW_EXTENSIONS`. Upstream publishes those plugins separately and leaves them out of the image otherwise. `lobster` is listed because a carried patch changes it, so the image runs the lobster code the gate tested.
 
+The image's update notices name this fork's releases, never the upstream npm package. The build passes `OPENCLAW_UPDATE_GITHUB_REPO` (the fork's `owner/repo`) to the Dockerfile, which keeps it as an environment variable, and `nucleo/update-source` makes the update check read that repository's GitHub releases when it is set. A dev image reports its full version, `<version>-dev.<build>`, so one dev build can see that the next is newer, and a release is never handed to the package auto-updater, because an image is replaced, not updated in place.
+
 ## Setting up a host
 
 Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it is gitignored) and set this host's values: the checkout, the log directory, and optionally an alert script that takes `--subject` and `--body`. The committed manifest carries placeholders on purpose, and every script refuses an unresolved one rather than guessing. The assembly host needs a full, non-shallow clone of the fork, and `gh` signed in with a token allowed to change the repository's Actions settings, for the workflow guard.
