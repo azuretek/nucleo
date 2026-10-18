@@ -58,7 +58,7 @@ distribution, and lives with the compose stack.
 
 ## How it is driven
 
-[docs/DISTRO.md](docs/DISTRO.md) owns the mechanics, and nothing outside this repository is needed. `pin-and-build.mjs` runs the chain whenever the distro branch is not covered by a green build: `sync` assembles the branch, `verify` proves every carried patch is really in the tree, the handoff pushes it, `gate` runs the checks on the result and `build` makes the image. `chain-status.mjs` shows a run live. Publishing a tag stays deliberate, because it replaces a running service.
+[docs/DISTRO.md](docs/DISTRO.md) owns the mechanics, and nothing outside this repository is needed. `pin-and-build.mjs` runs the chain whenever the distro branch is not covered by a green build: `sync` assembles the branch, `verify` proves every carried patch is really in the tree, and the handoff pushes it. The push starts `distro.yml` on GitHub, where `gate` runs the checks on the result, `build` makes the image and the dev pre-release is published. Publishing a tag stays deliberate, because it replaces a running service.
 
 ## The policies
 
