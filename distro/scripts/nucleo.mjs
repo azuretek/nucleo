@@ -18,6 +18,7 @@ import {
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { nextDevBuildNumber, tagNamesFromLsRemote } from "./build-number.mjs";
+import { failureReport, failureSummary, workflowCommands } from "./gate-report.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const MANIFEST = JSON.parse(readFileSync(join(HERE, "..", "nucleo.json"), "utf8"));
@@ -677,11 +678,21 @@ function gate() {
       `\n### ${step} rc=${r.status}${why} ${seconds}s log=${stepFile}\n${tailOf(stepFile, 6000)}\n`,
     );
     event("gate step " + step + " rc=" + r.status + why + " " + seconds + "s");
+    const ci = process.env.GITHUB_ACTIONS === "true";
     if (r.status !== 0) {
       green = false;
       log(`  ${step} FAILED`);
+      // ★ The reason goes where people look: this output is the CI job log, so a red gate names
+      // its cause there, in the run's annotations and in its summary, not only in a log file.
+      const text = readFileSync(stepFile, "utf8");
+      const rc = r.status ?? "null" + why;
+      for (const line of failureReport({ step, rc, logFile: stepFile, text, ci })) log(line);
+      if (ci && process.env.GITHUB_STEP_SUMMARY)
+        appendFileSync(process.env.GITHUB_STEP_SUMMARY, failureSummary({ step, rc, text }) + "\n");
       break;
     }
+    // A green step can still print warnings for GitHub into its log, which GitHub never sees.
+    if (ci) for (const line of workflowCommands(readFileSync(stepFile, "utf8"))) log(line);
     log(`  ${step} ok`);
   }
   appendFileSync(file, `\n@@@ ${green ? "GREEN" : "RED"} ${head}\n`);
