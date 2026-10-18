@@ -1,5 +1,16 @@
 # AGENTS.md
 
+## Núcleo
+
+This tree is Núcleo, a distribution of OpenClaw. These rules come first; the rest of this file still governs the source.
+
+- **Product name.** What people see from outside the code (the command, the image, the visible product name, the docs) is **Núcleo**, `nucleo` in identifiers. Code internals, configuration keys, environment variables and package names stay OpenClaw, so upstream merges stay clean. This replaces the "Use **OpenClaw** for the product" rule below for anything user-facing.
+- **Every source change is a patch**: a branch cut from the pinned release tag in `distro/nucleo.json`, never from upstream `main`, listed in the manifest with the tests that prove it. Fix it here first, then send upstream a version written against their `main`.
+- **Never edit, skip or weaken an upstream test, and never raise a time limit, to get a green.** The gate runs `check` and each patch's own tests; a red is a result to fix.
+- **Design for small hardware.** A change that grows memory, disk or startup time has to justify the cost. Performance changes carry measurements.
+- **Chela on the Control UI is the client.** UI work keeps the Control UI as the base on every platform.
+- **Distribution process** lives in `distro/docs/`; contribution rules in `CONTRIBUTING.md`.
+
 The task defines scope and authorization; its chosen workflow owns execution,
 review, publication, recovery, and cleanup. Explicit user instructions take
 precedence over skill guidelines and workflow defaults; host limits and required
