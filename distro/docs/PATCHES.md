@@ -22,6 +22,7 @@ One row per patch in `nucleo.json`, which is the machine-readable copy. Upstream
 | 25  | #155959  | `nucleo/sqlite-snapshot-staging-reuse`         | reuse one staging directory across snapshot retries               |
 | 26  | #155300  | `nucleo/session-projection-config-republish`   | stop a republished snapshot from invalidating session rows        |
 | 27  | ours     | `nucleo/docker-build-step-cache`               | keep build-all's step cache across image builds                   |
+| 28  | ours     | `nucleo/product-name`                          | show Núcleo as the product name people see                        |
 
 ## How a patch is carried
 
