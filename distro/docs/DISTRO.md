@@ -39,6 +39,8 @@ node scripts/nucleo.mjs status               # where the pin, the branch and the
 
 Follow the gate and the build on GitHub, in the run the driver names (`gh run watch <id> --repo azuretek/nucleo`). The driver appends one timestamped line per stage start and end and per result to `events.log` in its log directory, so a finished run can be read afterwards.
 
+**A red gate names its cause in the job log.** When a step fails, the gate prints the reason lines from that step's log (type errors, the failing row of upstream's check summary, failing tests), annotates the run with each one, adds them to the run summary, and folds the end of the step log into the job log. Warnings a step printed into its log are re-emitted as warnings, never as the cause. `scripts/gate-report.mjs` owns which lines count. The full step logs are still kept as the `gate-logs` artifact for 14 days.
+
 ## The gate tests our patches, not upstream
 
 The gate runs `check`, then `behaviours`. The tree is compiled once, by the image build that follows a green gate: upstream's build ran in the gate and again inside the Dockerfile, so the gate's copy compiled the same code a second time (about 17 minutes) and is gone. A compile error now stops the chain at the image build, still before anything is published. `behaviours` runs each carried patch's own tests, the ones its upstream PR adds or changes, listed as `behaviourTests` in `nucleo.json`. Upstream's full suite does not run here: upstream already runs it before every release, so running it again re-tests code we did not change.
