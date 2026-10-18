@@ -46,7 +46,7 @@ describe("formatCliBannerLine", () => {
       mode: "default",
     });
 
-    expect(line).toBe("🦞 OpenClaw 2026.3.7 (abc1234) — All your chats, one OpenClaw.");
+    expect(line).toBe("🦞 Núcleo 2026.3.7 (abc1234) · All your chats, one OpenClaw.");
   });
 
   it("drops decorative emoji for generic Linux terminals", () => {
@@ -56,7 +56,7 @@ describe("formatCliBannerLine", () => {
       platform: "linux",
     });
 
-    expect(line).toBe("OpenClaw 2026.3.7 (abc1234)");
+    expect(line).toBe("Núcleo 2026.3.7 (abc1234)");
   });
 });
 
@@ -82,7 +82,7 @@ describe("emitCliBanner", () => {
 
     emitCliBanner("2026.3.7", bannerOptions);
 
-    expect(writeSpy).toHaveBeenCalledWith("\n🦞 OpenClaw 2026.3.7 (abc1234)\n\n");
+    expect(writeSpy).toHaveBeenCalledWith("\n🦞 Núcleo 2026.3.7 (abc1234)\n\n");
     expect(hasEmittedCliBanner()).toBe(true);
   });
 
