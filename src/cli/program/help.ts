@@ -134,7 +134,7 @@ export function configureProgramHelp(
   if (isRootVersionInvocation(process.argv)) {
     const commit = resolveCommitHash({ moduleUrl: import.meta.url });
     console.log(
-      commit ? `OpenClaw ${ctx.programVersion} (${commit})` : `OpenClaw ${ctx.programVersion}`,
+      commit ? `Núcleo ${ctx.programVersion} (${commit})` : `Núcleo ${ctx.programVersion}`,
     );
     process.exit(0);
   }
