@@ -432,7 +432,7 @@ function tryOutputLauncherVersion(argv) {
     }
     const version = resolveLauncherVersion();
     const commit = resolveLauncherCommit();
-    process.stdout.write(commit ? `OpenClaw ${version} (${commit})\n` : `OpenClaw ${version}\n`);
+    process.stdout.write(commit ? `Núcleo ${version} (${commit})\n` : `Núcleo ${version}\n`);
     return true;
   } catch {
     return false;
