@@ -690,6 +690,10 @@ function build() {
       "NUCLEO_UPSTREAM_COMMIT=" + head,
       "--build-arg",
       "OPENCLAW_DOCKER_BUILD_VERSION=" + MANIFEST.version,
+      // Plugins the Dockerfile leaves out unless named: lobster carries one of our patches.
+      ...(MANIFEST.image.extensions?.length
+        ? ["--build-arg", "OPENCLAW_EXTENSIONS=" + MANIFEST.image.extensions.join(",")]
+        : []),
       "--label",
       "org.opencontainers.image.version=" + MANIFEST.version,
       "--label",
@@ -703,6 +707,20 @@ function build() {
   event("build " + (r.status === 0 ? "ok" : "failed rc=" + r.status) + " " + image);
   if (r.status !== 0) throw new Error("image build failed");
   log("built " + image + ". The previous tag stays on the host for rollback.");
+  // The build cache is what makes the next image build reuse its dependency layers, so it is
+  // kept, and trimmed least recently used first to its bound rather than left to grow.
+  const maxGb = MANIFEST.caches?.dockerBuildMaxGb;
+  if (maxGb) {
+    const p = spawnSync("docker", ["builder", "prune", "-f", "--max-used-space", maxGb + "gb"], {
+      encoding: "utf8",
+    });
+    log(
+      "docker build cache bounded to " +
+        maxGb +
+        " GB: " +
+        ((p.stdout || p.stderr || "").trim().split("\n").pop() || "rc=" + p.status),
+    );
+  }
 }
 function publish() {
   const head = git(["rev-parse", MANIFEST.distroBranch]);
