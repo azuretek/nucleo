@@ -14,7 +14,7 @@
   "patchPolicy": "upstream-first",
   "refuseShallowClone": true,
   "image": {
-    "name": "openclaw-gateway",
+    "name": "nucleo-gateway",
     "devTagScheme": "nucleo-<version>-dev.<build>",
     "releaseTagScheme": "nucleo-<version>",
     "buildFirst": 1,
@@ -244,6 +244,21 @@
       "subject": "keep build-all's step cache across image builds",
       "behaviour": "the image build reuses build-all's step cache",
       "behaviourCoveredBy": "image"
+    },
+    {
+      "n": 28,
+      "pr": null,
+      "branch": "nucleo/product-name",
+      "subject": "show Núcleo as the product name people see",
+      "behaviour": "the CLI, its banner and errors, and the Control UI show Núcleo, and the CLI installs as nucleo",
+      "behaviourTests": [
+        "src/cli/banner.test.ts",
+        "src/cli/program/help.test.ts",
+        "src/cli/program/error-output.test.ts",
+        "src/cli/failure-output.test.ts",
+        "src/cli/program/root-command-descriptions.test.ts",
+        "ui/src/app/app-host.document-title.test.ts"
+      ]
     }
   ],
   "version": "0.0.1",
