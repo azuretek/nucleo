@@ -21,7 +21,8 @@
     "url": "git+https://github.com/openclaw/openclaw.git"
   },
   "bin": {
-    "openclaw": "openclaw.mjs"
+    "openclaw": "openclaw.mjs",
+    "nucleo": "openclaw.mjs"
   },
   "publishConfig": {
     "executableFiles": [
