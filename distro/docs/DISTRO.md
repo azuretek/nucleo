@@ -14,8 +14,6 @@ All paths are relative to `distro/`.
 node scripts/pin-and-build.mjs            # dry run: is the branch covered, and what would run
 node scripts/pin-and-build.mjs --apply    # run the whole chain below
 node scripts/pin-and-build.mjs --idle     # exit 0 only when no run is in progress
-node scripts/chain-status.mjs             # live snapshot of a run
-node scripts/chain-status.mjs --watch     # follow a run until it ends
 
 node scripts/nucleo.mjs sync    [--dry-run]   # cut or refresh the distro branch at the pin, replay our patches
 node scripts/nucleo.mjs verify               # every patch is an ancestor AND its marker is in the source
@@ -31,18 +29,15 @@ node scripts/nucleo.mjs status               # where the pin, the branch and the
 
 1. **Assembly host**, the authoritative checkout: `pipeline.mjs run --only assemble,verify`. `assemble` rebuilds the distro branch as the pin plus the patch series plus the paths the fork owns. `verify` is the acceptance gate: a patch that leaves lines behind passes only when the manifest names its behaviour and the tests that prove it.
 2. **Handoff**: the driver first archives the remote tip it is about to replace as `archive/main-<sha>` and reads it back, so every handoff has a way back. Then `pipeline.mjs run --only handoff` pushes with `--force-with-lease`, inside the workflow guard described below.
-3. **Build machine**: `pipeline.mjs run --only gate,build` over `ssh -tt`, so a driver that is killed ends its remote gate too. It force-fetches the distro branch first, because the handoff rewrites it and a plain fetch is rejected, which would gate stale content. Each gate step streams to its own log file, so output has no size cap and the log can be read while it runs. Then the image build.
+3. **GitHub**: the push starts `distro.yml`, which runs the gate, builds the image and publishes the dev pre-release (see [Continuous integration](#continuous-integration)). The driver waits for that run to appear and names it, and its part ends there.
 
-**It runs only when the distro branch is not covered.** Covered means a run record for exactly that commit whose stages all passed and which included a build. A green chain writes that record on the assembly host against the commit it handed off, so a green run is never repeated and a commit that lands during a run is never mistaken for built.
+**It runs only when the distro branch is not covered.** Covered means GitHub has a successful `distro.yml` push run for exactly that commit. A run still in progress counts as in hand, so the driver never hands off over a build. A failed run is not covered: assembling again cuts a new commit, and its push is the retry.
 
 **One run at a time.** A lock refuses a second run, because two long git operations in one worktree corrupt the index. A lock whose holder is dead is cleared at once.
 
 ## Watching a run
 
-Watch with `chain-status.mjs`, never a polling loop. The driver and the gate each append one timestamped line per stage and per step start and end to `events.log` in their log directory, and `chain-status.mjs` follows both with `tail -F`.
-
-- Without flags it prints the lock holder, the recent events on both hosts and the tail of the live step's log.
-- `--watch` streams events and exits 0 on `chain GREEN` or `chain COVERED`, 1 on `chain RED`, 3 the moment the driver dies without a result, and 2 if nothing is running. `--watch --until=change` exits at the next event of any kind.
+Follow the gate and the build on GitHub, in the run the driver names (`gh run watch <id> --repo azuretek/nucleo`). The driver appends one timestamped line per stage start and end and per result to `events.log` in its log directory, so a finished run can be read afterwards.
 
 ## The gate tests our patches, not upstream
 
@@ -57,29 +52,13 @@ The gate runs `check`, then `behaviours`. The tree is compiled once, by the imag
 
 Upstream reads its own workflow files as source: a test-worker asset list names one, and about 164 tests parse them, so deleting them kills the test leg before a single test runs. They stay. The handoff switches Actions off, pushes, disables by id every workflow that is not `.github/workflows/distro.yml`, switches Actions back on and disables again. GitHub registers pushed workflows while Actions is off, so none can start; the first run disabled 110 with 0 runs. `distro.yml` fails if any other workflow is active, and a workflow that first appears in a new pin is caught the same way. The driver needs a GitHub token allowed to change the repository's Actions settings.
 
-## Slow-host timeouts
-
-Upstream's timeouts assume CI hardware. The driver raises these on the build machine only. Each is a knob upstream exposes, or one our patch series adds, so none changes behaviour.
-
-| Variable                                             | Upstream default | Set to | Why                                                                                 |
-| ---------------------------------------------------- | ---------------- | ------ | ----------------------------------------------------------------------------------- |
-| `OPENCLAW_OXLINT_SHARD_TIMEOUT_MS`                   | 15 min           | 45 min | one oxlint shard overran 15 minutes and failed the lint leg                         |
-| `OPENCLAW_BOUNDARY_DTS_TIMEOUT_MS`                   | 5 min            | 30 min | added by `fix/boundary-dts-timeout-knob` for the package boundary units             |
-| `OPENCLAW_PLUGIN_SDK_BOUNDARY_ROOT_SHIMS_TIMEOUT_MS` | 5 min            | 30 min | the plugin-sdk unit reads only this knob, so the general one leaves it at 5 minutes |
-
-## Build machine tuning
-
-`machine.env` in `nucleo.local.json` passes settings the pinned repo reads to the build machine stage, so a value that depends on that machine lives with that machine. The one that matters most is `OPENCLAW_TEST_PROJECTS_PARALLEL`: the full test suite is about 700 Vitest shards, and upstream runs only 2 at once on any host with 16 GB or less, whatever its core count. Each shard is one worker process, so set it from a measured peak, never from the core count: watch memory during a test step at the current value, divide by the shard count, and fit the new count inside the memory with no swap in use. Swap is the failure to avoid, because a swapping gate runs several times slower and its timing-sensitive tests fail.
-
-Set `NODE_COMPILE_CACHE` in `machine.env` to an absolute directory whose name contains `compile`, on the machine's own disk. Every Node process and worker thread the tests start then reuses V8's compiled code for a module it has already compiled; the suite starts hundreds of worker threads per config, each loading the same bundled chunks, and a worker-heavy file ran 12 to 13 percent faster with it. Upstream's runners pass the variable through to every child, so nothing in the pinned repo changes. Entries are keyed by source content, so the directory grows with every pin and patch: `cache-bound.mjs` runs first in every pipeline run and trims it, least recently used files first, to `caches.nodeCompileMb` in `nucleo.json`, and does the same for the Vitest module cache under `.cache/vitest` in the checkout (`caches.vitestMb`). It trims rather than clears, because a cleared cache makes the next run start cold. The image build keeps docker's build cache, so dependency layers are reused, and trims it to `caches.dockerBuildMaxGb` after each build.
+## What the image carries
 
 The image builds in the plugins listed in `image.extensions`, passed to the Dockerfile as `OPENCLAW_EXTENSIONS`. Upstream publishes those plugins separately and leaves them out of the image otherwise. `lobster` is listed because a carried patch changes it, so the image runs the lobster code the gate tested.
 
-Set `OPENCLAW_TSDOWN_MAX_OLD_SPACE_MB` in `machine.env` so the build's declaration step runs two compiler groups at once. That step is most of the build, and upstream runs two groups together only when the machine's memory holds both heaps plus 768 MB headroom each; the default 12 GB heap never fits, so every group runs alone. On a 12 GB machine 4096 fits and 5120 does not: measured on the build machine, the unified declarations took 9 min 26 s at 4096 against 14 min 30 s alone, with no heap failure, a peak of 8.1 GB per compiler and a brief touch of swap before dynamic memory grew. Check the concurrency a value gets on a machine with `resolveStagedDeclarationConcurrency` in `scripts/tsdown-build.mts` before changing it.
-
 ## Setting up a host
 
-Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it is gitignored) and set this host's values: the checkout, the log directory, the build machine's ssh target, checkout and log directory, and optionally an alert script that takes `--subject` and `--body`. The committed manifest carries placeholders on purpose, and every script refuses an unresolved one rather than guessing. The build machine needs Git 2.45 or newer (the frozen bundle contract reads selected sources without a lazy fetch, and its docker helper tests refuse an older Git; Ubuntu 24.04 ships 2.43, so use the git-core PPA), at least 12 GB of memory it does not have to compete for (a Hyper-V guest runs on dynamic memory with a 12 GB floor, starting at 14 GB; a Linux guest swaps before the balloon grows, so in practice it stays near its floor during a gate, and `OPENCLAW_TEST_SHARD_MEMORY_MB` keeps the test step from starting shards into swap), the same repository with dependencies installed, and its checkout and every ancestor must not be group- or world-writable, because the node host refuses a temp workspace under one (the driver runs the machine stage with `umask 022` for what the gate creates); it may be shallow, because gate and build need one commit tree rather than history.
+Copy `nucleo.local.example.json` to `nucleo.local.json` beside the manifest (it is gitignored) and set this host's values: the checkout, the log directory, and optionally an alert script that takes `--subject` and `--body`. The committed manifest carries placeholders on purpose, and every script refuses an unresolved one rather than guessing. The assembly host needs a full, non-shallow clone of the fork, and `gh` signed in with a token allowed to change the repository's Actions settings, for the workflow guard.
 
 ## A newer upstream release is reported, never applied
 
@@ -116,10 +95,10 @@ The chain builds an image on its own. Publishing a tag and rolling it out stay d
 
 ## Host roles
 
-**The build machine is for tests and builds, and nothing authoritative lives there.** It carries test builds, the gate, the container build, docker layers and cache, and disposable worktrees, all of which can be recreated. The authoritative checkout of the fork, where `sync` cuts the distro branch and replays the patches, lives on the assembly host's durable storage, because that is where history and anything that grows belongs. Growing the build machine's disk buys scratch room, never a permanent clone.
+**The assembly host holds the one authoritative checkout.** `sync` cuts the distro branch and replays the patches there, on durable storage, because that is where history and anything that grows belongs. Tests and builds run on GitHub's hosted runners, which keep nothing between runs except the caches GitHub stores.
 
-The consequence for the code: the shallow-clone refusal guards the operations that replay a patch series (sync and verify), and not gate or build, which need one commit tree rather than its ancestry. A build machine can therefore take the assembled commit alone.
+The consequence for the code: the shallow-clone refusal guards the operations that replay a patch series (sync and verify), and not gate or build, which need one commit tree rather than its ancestry.
 
 ## Continuous integration
 
-Test and build run on GitHub's hosted runners, like Chela and Cuate. `distro.yml` runs the fast checks on every pull request. On every push to `main` it also runs the gate (`check`, then each carried patch's own tests), builds the image with buildx and pushes it to `ghcr.io/azuretek/nucleo-gateway`, and publishes the dev pre-release `v<version>-dev.<build>.<sha>`. Only the newest ten dev pre-releases and images are kept. Docker layers, the pnpm store and the Node compile cache are reused between runs through GitHub's cache. Assembly still runs on the assembly host and hands off by pushing `main`, which starts the build; the driver's own gate and build on the build machine remain a manual fallback.
+Test and build run on GitHub's hosted runners, like Chela and Cuate. `distro.yml` runs the fast checks on every pull request. On every push to `main` it also runs the gate (`check`, then each carried patch's own tests), builds the image with buildx and pushes it to `ghcr.io/azuretek/nucleo-gateway`, and publishes the dev pre-release `v<version>-dev.<build>.<sha>`. Only the newest ten dev pre-releases and images are kept. Docker layers, the pnpm store and the Node compile cache are reused between runs through GitHub's cache. Assembly still runs on the assembly host and hands off by pushing `main`, which starts the build.
