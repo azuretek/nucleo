@@ -1,6 +1,6 @@
 # Núcleo distro: how to run it
 
-**Núcleo** (accent in branding, `nucleo` in every identifier) is our OpenClaw distribution: OpenClaw pinned to an official upstream release tag, carrying our patches, built from our own source, and gated before any tag moves. The product and code name inside stays OpenClaw so upstream merges keep working.
+**Núcleo** (accent in branding, `nucleo` in every identifier) is our OpenClaw distribution: OpenClaw pinned to an official upstream release tag, carrying our patches, built from our own source, and gated before any tag moves. The source and code name inside stay OpenClaw so upstream merges keep working; what people see from outside the code is Núcleo.
 
 **Everything shared lives in `nucleo.json`.** The upstream repo, the pinned tag, the distro branch, the patch list, the image and tag scheme, the gate steps and the log directory. Change a value there, never in a script. **Everything about one host lives in `nucleo.local.json`** beside it (see [Setting up a host](#setting-up-a-host)).
 
