@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import module from "node:module";
@@ -23,6 +22,7 @@ import {
   classifyUnsupportedNodeCommand,
   formatUnsupportedNodeDiagnosticWarning,
 } from "./node-version.mjs";
+import { formatProductVersion } from "./src/nucleo-version.ts";
 
 const isSourceCheckoutLauncher = () =>
   existsSync(new URL("./.git", import.meta.url)) ||
@@ -432,7 +432,8 @@ function tryOutputLauncherVersion(argv) {
     }
     const version = resolveLauncherVersion();
     const commit = resolveLauncherCommit();
-    process.stdout.write(commit ? `Núcleo ${version} (${commit})\n` : `Núcleo ${version}\n`);
+    const shown = formatProductVersion(version);
+    process.stdout.write(commit ? `${shown} (${commit})\n` : `${shown}\n`);
     return true;
   } catch {
     return false;
