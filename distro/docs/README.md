@@ -11,7 +11,6 @@ Shared documentation for Núcleo. One distribution and one set of rules, so anyt
 | [DISTRO.md](DISTRO.md)             | How to run, watch and set up the chain from pin to built image.                                                |
 | [PATCHES.md](PATCHES.md)           | The patch series, one row per upstream PR.                                                                     |
 | [UPGRADE.md](UPGRADE.md)           | Moving the pin to a newer upstream release.                                                                    |
-| [TRAPS.md](TRAPS.md)               | Environment traps we paid for, and what holds each one now.                                                    |
 | [proof/](proof/)                   | Evidence for the claims we make, one directory per claim.                                                      |
 
 The rules for what may publish are in [.github/workflows/CONVENTIONS.md](../.github/workflows/CONVENTIONS.md).
