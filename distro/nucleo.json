@@ -280,7 +280,7 @@
     "config/max-lines-baseline.txt"
   ],
   "workBranch": "distro/<pin>",
-  "devBuildNumber": "the commit count from the pinned tag to the work branch; the assembly host derives it, and the build host accepts it as NUCLEO_BUILD_NUMBER rather than counting a shallow tree",
+  "devBuildNumber": "one more than the highest v<version>-dev.<n> tag on the fork, and a commit that already carries a dev tag keeps its number; scripts/build-number.mjs owns the rule, and CI computes it once per run and passes it on as NUCLEO_BUILD_NUMBER",
   "current": "0.0.0",
   "forkOwnedPaths": [
     "distro",
@@ -291,12 +291,6 @@
     "VISION.md",
     "CHANGELOG.md"
   ],
-  "machine": {
-    "ssh": "USER@HOST",
-    "checkout": "/home/USER/src/openclaw",
-    "_note": "the machine the gate and build stages run on; the host-local override carries this host values",
-    "logs": "/home/USER/logs/nucleo"
-  },
   "notifyScript": "/home/USER/.claude/skills/notify/scripts/notify.mjs",
   "lintScopeNeutralPaths": [
     "scripts/run-oxlint-shards.mts"
