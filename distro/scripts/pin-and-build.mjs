@@ -342,6 +342,98 @@ function runStep(where, args, timeoutMs) {
   return run("node", [PIPELINE, ...args], { cwd: REPO, timeout: timeoutMs });
 }
 
+// A green chain is published as a dev pre-release, so every build that passed is something a person
+// can find, read and pull. Only the newest keepDevReleases are kept: older dev releases and their
+// tags are deleted, which is the dev tag scheme's whole lifecycle. Release tags are protected and
+// never touched here.
+function devReleaseNotes(built, tag, image) {
+  const lines = [
+    "Dev build of Núcleo " +
+      MANIFEST.version +
+      ", from `" +
+      built.slice(0, 12) +
+      "` on OpenClaw " +
+      MANIFEST.pinnedTag +
+      ".",
+    "",
+    "Image: `" + image + "`",
+    "",
+    "Passed the gate (check, then each patch's own tests) and the image build.",
+    "",
+    "## Patches",
+    "",
+  ];
+  for (const p of MANIFEST.patches) {
+    const up = p.pr
+      ? " ([openclaw#" + p.pr + "](https://github.com/openclaw/openclaw/pull/" + p.pr + "))"
+      : "";
+    lines.push("- " + p.subject + up);
+  }
+  return lines.join("\n") + "\n";
+}
+export function devReleasesToPrune(releases, keep) {
+  return releases
+    .filter((r) => r.isPrerelease && /-dev\./.test(r.tagName))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(keep)
+    .map((r) => r.tagName);
+}
+function publishDev(built) {
+  const n = (git(["rev-list", "--count", MANIFEST.pinnedTag + ".." + built]).stdout || "").trim();
+  const short = (git(["rev-parse", "--short=10", built]).stdout || "").trim();
+  if (!/^[0-9]+$/.test(n) || !short)
+    return say("dev release skipped: cannot count the build number");
+  const tag = "v" + MANIFEST.version + "-dev." + n + "." + short;
+  const image =
+    MANIFEST.image.name +
+    ":" +
+    MANIFEST.image.devTagScheme
+      .replace("<version>", MANIFEST.version)
+      .replace("<build>", n)
+      .replace("<sha>", short);
+  const notes = join(LOG_DIR, "dev-release-notes.md");
+  writeFileSync(notes, devReleaseNotes(built, tag, image));
+  if (git(["tag", "-f", tag, built]).status !== 0)
+    return say("dev release skipped: cannot tag " + tag);
+  const pushed = git(["push", "-q", "origin", "refs/tags/" + tag], { timeout: 120000 });
+  if (pushed.status !== 0)
+    return alert("nucleo dev release: tag push failed", (pushed.stderr || "").slice(-600));
+  const rel = gh([
+    "release",
+    "create",
+    tag,
+    "--repo",
+    REPO_SLUG,
+    "--prerelease",
+    "--verify-tag",
+    "--title",
+    tag,
+    "--notes-file",
+    notes,
+  ]);
+  if (rel.status !== 0)
+    return alert("nucleo dev release: release create failed", (rel.stderr || "").slice(-600));
+  say("published " + tag);
+  const list = gh([
+    "release",
+    "list",
+    "--repo",
+    REPO_SLUG,
+    "--limit",
+    "200",
+    "--json",
+    "tagName,isPrerelease,createdAt",
+  ]);
+  let releases = [];
+  try {
+    releases = JSON.parse(list.stdout || "[]");
+  } catch {}
+  for (const old of devReleasesToPrune(releases, MANIFEST.image.keepDevReleases || 10)) {
+    const d = gh(["release", "delete", old, "--repo", REPO_SLUG, "--cleanup-tag", "--yes"]);
+    say((d.status === 0 ? "pruned " : "could not prune ") + old);
+  }
+}
+
 function main() {
   if (!MACHINE || !MACHINE_CHECKOUT || /USER|HOST/.test(MACHINE + MACHINE_CHECKOUT)) {
     say(
@@ -442,6 +534,7 @@ function main() {
       ) + "\n",
     );
     event("chain GREEN " + built);
+    publishDev(built);
     appendFileSync(join(LOG_DIR, "pin-and-build.log"), stamp() + " green " + head + "\n");
   } finally {
     releaseLock();
