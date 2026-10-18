@@ -4,7 +4,7 @@
 patches, built from our own source, and gated before any tag moves. The accent belongs in branding and docs;
 `nucleo` is used in every identifier, because image tags, paths and branches cannot carry one.
 
-The product and code name inside stays **OpenClaw**, so upstream merges keep working. This repository owns the
+The source and code name inside stay **OpenClaw**, so upstream merges keep working. What people see from outside the code, the `nucleo` command, the `nucleo-gateway` image and the releases, is Núcleo. This repository owns the
 distribution: what it is pinned to, what we carry, how it is built, and what it promises.
 
 ## Why a distribution

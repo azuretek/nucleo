@@ -1,6 +1,23 @@
 # Design: what Núcleo is and why it is built this way
 
-Núcleo is our distribution of OpenClaw: upstream OpenClaw pinned to an official release tag, carrying our adapted patches, built from our own source, and gated before any tag moves. The product and code name inside stays OpenClaw, so upstream merges and upstream documentation stay coherent; only the distribution, its image and its release notes carry the distro name.
+Núcleo is a faster, leaner distribution of OpenClaw: upstream OpenClaw pinned to an official release tag, carrying our fixes and performance work, built from our own source, and gated before any tag moves. The source and code name stay OpenClaw, so upstream merges and upstream documentation stay coherent. Everything people see from outside the code, the `nucleo` command, the `nucleo-gateway` image, the releases, the README and the repository conventions, is Núcleo, and the build renames it. Code internals, configuration keys and environment variables are never renamed.
+
+## Goals
+
+- **Faster and more efficient than stock OpenClaw**: quicker startup, less memory and CPU at rest, less work per request.
+- **Chela is the client.** We build for and test against Chela on iOS, Android, desktop and the web. It is built on the Control UI, and the Control UI stays the base on every platform.
+- **A good interface for coding**: writing, running and reviewing code with an agent is a primary use case.
+- **Deploy anywhere, including older hardware**, from an old laptop or a spare mini PC to a Raspberry Pi.
+- **Run a known thing, and ship fixes without waiting** for upstream, while every upstream-fixable change still goes upstream.
+
+## Design principles
+
+- **Stability over the newest thing.** A platform people rely on across their devices has to keep working between upgrades, so we pin a release, move it one release at a time, and gate every change.
+- **Small and older hardware is a target, not an afterthought.** A change that grows memory, disk or startup time has to justify the cost, and a lighter way to do the same thing is a reason to diverge from upstream.
+- **Performance is measured, not assumed.** A performance patch carries the measurement that justifies it.
+- **One client, every device.** We build for Chela on the Control UI rather than separate native interfaces, so a feature lands on every platform at once.
+- **Stay mergeable.** Renaming stops at what is seen from outside, so every upstream release still merges cleanly.
+- **Test what we change**, and never edit or weaken upstream's tests to get a green.
 
 ## Why a distribution at all
 
@@ -12,7 +29,7 @@ main moves constantly and is what upstream tests against. A distribution that tr
 
 ## The patch series
 
-Twelve patches today, each recorded in the manifest with its upstream PR number so its status is a lookup rather than a memory. The policy is upstream-first: where upstream has already solved something, we take upstream and drop our change for that file.
+Each patch is recorded in the manifest with its upstream PR number so its status is a lookup rather than a memory. The policy is upstream-first: where upstream has already solved something, we take upstream and drop our change for that file.
 
 Two measurements shaped this.
 
@@ -60,7 +77,7 @@ The container builds from the checkout on disk rather than cloning inside the im
 
 ## The gate
 
-Lint, typecheck, test, build, in that order, with the image build behind all four. Anything that can reject the tree runs before a build, so a failure costs minutes rather than half an hour. The validator refuses a manifest whose build leg is not last, and a green log names exactly one commit.
+`check`, then each carried patch's own tests, then the image build, which is the one compile of the tree. Upstream already runs its full suite before every release, so we test what our patches change rather than running it again. Anything that can reject the tree runs before the image build, so a failure costs minutes rather than half an hour, and a green log names exactly one commit.
 
 ## Hosts
 
