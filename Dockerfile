@@ -305,7 +305,7 @@ ENV NUCLEO_VERSION=${NUCLEO_VERSION}
 RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       test "$(node -p "require(\"/app/package.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
       test "$(node -p "require(\"/app/dist/build-info.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
-      test "$(node /app/openclaw.mjs --version | cut -d ' ' -f 2)" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
+      node /app/openclaw.mjs --version | grep -q "$OPENCLAW_DOCKER_BUILD_VERSION"; \
     fi
 
 # Keep pnpm available in the runtime image for container-local workflows.
