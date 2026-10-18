@@ -45,7 +45,10 @@ for (const p of patches) {
   if (
     !(p.behaviourTests || []).length &&
     p.behaviourCoveredBy &&
-    (manifest.gates || []).includes(p.behaviourCoveredBy)
+    ((manifest.gates || []).includes(p.behaviourCoveredBy) ||
+      // A Dockerfile change is exercised by the image build that follows a green gate, and a
+      // red image build stops the chain before anything is published.
+      p.behaviourCoveredBy === "image")
   ) {
     held += 1;
     console.log(

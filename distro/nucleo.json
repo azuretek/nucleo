@@ -236,6 +236,14 @@
         "src/config/runtime-snapshot.preparation.test.ts",
         "src/gateway/session-row-projection.invalidation.test.ts"
       ]
+    },
+    {
+      "n": 27,
+      "pr": null,
+      "branch": "nucleo/docker-build-step-cache",
+      "subject": "keep build-all's step cache across image builds",
+      "behaviour": "the image build reuses build-all's step cache",
+      "behaviourCoveredBy": "image"
     }
   ],
   "version": "0.0.1",

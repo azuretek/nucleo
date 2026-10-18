@@ -145,6 +145,35 @@ function workBranchName() {
     MANIFEST.pinnedTag.replace(/^v/, ""),
   );
 }
+// Lines the carried patches' own commits delete from a pin-owned file, minus any a patch adds back.
+function pinOwnedShrinks(owned) {
+  const removed = new Set();
+  const added = new Set();
+  for (const p of MANIFEST.patches) {
+    const ref = MANIFEST.fork.remote + "/" + p.branch;
+    const base = gitTry(["merge-base", MANIFEST.pinnedCommit, ref]);
+    if (!base.ok) continue;
+    const log = gitTry([
+      "log",
+      "--no-merges",
+      "--format=",
+      "-p",
+      "-U0",
+      base.out + ".." + ref,
+      "--",
+      owned,
+    ]);
+    for (const line of log.out.split("\n")) {
+      if (line.startsWith("---") || line.startsWith("+++")) continue;
+      if (line.startsWith("-")) removed.add(line.slice(1));
+      else if (line.startsWith("+")) added.add(line.slice(1));
+    }
+  }
+  for (const line of added) removed.delete(line);
+  removed.delete("");
+  return removed;
+}
+
 function sync() {
   let resolvedHunks = 0;
   let adaptCount = 0;
@@ -338,6 +367,19 @@ function sync() {
   // pin once the replay is done, and the change is recorded as an adaptation commit.
   for (const owned of MANIFEST.pinOwnedFiles || []) {
     gitTry(["checkout", MANIFEST.pinnedTag, "--", owned]);
+    // A patch that removes an allowance from a baseline, because its fix made the entry stale, is
+    // tightening it, and the ratchet then fails on the pin copy's stale entry ("0 < 1"). So the
+    // lines our patches' own commits delete from this file are removed from the pin copy too.
+    // Only deletions are carried: an addition would loosen a ratchet, and that stays upstream's.
+    const shrink = pinOwnedShrinks(owned);
+    if (shrink.size) {
+      const path = join(MANIFEST.checkout, owned);
+      const kept = readFileSync(path, "utf8")
+        .split("\n")
+        .filter((line) => !shrink.has(line));
+      writeFileSync(path, kept.join("\n"));
+      gitTry(["add", "--", owned]);
+    }
     const staged = spawnSync("git", ["diff", "--cached", "--quiet", "--", owned], {
       cwd: MANIFEST.checkout,
     });
