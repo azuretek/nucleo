@@ -162,9 +162,9 @@ function pipeline() {
     }
   }
 
-  if (!dry && process.env.NODE_COMPILE_CACHE) {
-    // A shared compile cache only grows, so it is bounded before every run that would add to it.
-    const bound = spawnSync(process.execPath, [join(HERE, "compile-cache.mjs")], {
+  if (!dry) {
+    // The caches a run reuses only grow, so they are bounded before every run that would add to them.
+    const bound = spawnSync(process.execPath, [join(HERE, "cache-bound.mjs"), MANIFEST.checkout], {
       encoding: "utf8",
     });
     process.stdout.write(bound.stdout + bound.stderr);

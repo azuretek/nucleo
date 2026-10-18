@@ -18,7 +18,11 @@
     "devTagScheme": "nucleo-<version>-dev.<build>",
     "releaseTagScheme": "nucleo-<version>",
     "buildFirst": 1,
-    "keepDevImages": 10
+    "keepDevImages": 10,
+    "extensions": [
+      "lobster"
+    ],
+    "extensionsNote": "Plugins upstream publishes on their own and the Dockerfile leaves out unless named in OPENCLAW_EXTENSIONS. lobster is built in because a carried patch changes it (fix/lobster-llm-adapter-current), so the image runs the code the gate tested instead of a separately installed copy."
   },
   "logs": "/var/log/nucleo",
   "gates": [
@@ -245,5 +249,11 @@
   "lintScopeNeutralPaths": [
     "scripts/run-oxlint-shards.mts"
   ],
-  "lintScopeNeutralPathsNote": "Paths a carried patch edits without changing any lint rule or cap. perf/oxlint-extension-chunk-size only sizes lint chunks for the host; naming its file keeps upstream's changed-file lint scoping on, so line caps that upstream treats as advisory for files we never touched stay advisory here."
+  "lintScopeNeutralPathsNote": "Paths a carried patch edits without changing any lint rule or cap. perf/oxlint-extension-chunk-size only sizes lint chunks for the host; naming its file keeps upstream's changed-file lint scoping on, so line caps that upstream treats as advisory for files we never touched stay advisory here.",
+  "caches": {
+    "nodeCompileMb": 8192,
+    "vitestMb": 24576,
+    "dockerBuildMaxGb": 80
+  },
+  "cachesNote": "Bounds for what the build machine keeps between runs. cache-bound.mjs trims the Node compile cache and the Vitest module cache least recently used first before a run, and the image build trims the docker build cache to dockerBuildMaxGb after it, so a repeat run stays warm and the disk stays bounded."
 }
