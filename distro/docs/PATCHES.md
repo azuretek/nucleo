@@ -23,6 +23,7 @@ One row per patch in `nucleo.json`, which is the machine-readable copy. Upstream
 | 26  | #155300  | `nucleo/session-projection-config-republish`   | stop a republished snapshot from invalidating session rows        |
 | 27  | ours     | `nucleo/docker-build-step-cache`               | keep build-all's step cache across image builds                   |
 | 28  | ours     | `nucleo/product-name`                          | show Núcleo as the product name people see                        |
+| 29  | ours     | `nucleo/update-source`                         | read update notices from Núcleo's own releases                    |
 
 ## How a patch is carried
 
