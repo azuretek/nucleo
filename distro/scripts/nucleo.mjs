@@ -639,8 +639,15 @@ function gate() {
   );
   event("gate start " + head);
   const env = { ...process.env, ...changedPathsEnv() };
+  // A stage name runs that one step, so lint and tests can be separate jobs.
+  const only = ARGS[1];
+  const steps = only ? MANIFEST.gates.filter((s) => s === only) : MANIFEST.gates;
+  if (!steps.length) {
+    log("unknown gate step: " + only + " (known: " + MANIFEST.gates.join(", ") + ")");
+    process.exit(1);
+  }
   let green = true;
-  for (const step of MANIFEST.gates) {
+  for (const step of steps) {
     // 'tests' runs every carried patch's own tests; every other step is a pnpm script.
     const [bin, args] =
       step === "tests"
@@ -978,6 +985,7 @@ const USAGE =
 // An unknown argument is a refusal, never ignored: `gate --help` once ran a full gate on a host that
 // must never run one.
 const FLAGS = {
+  gate: ["lint", "tests"],
   sync: ["--dry-run"],
   build: ["--dry-run"],
   publish: ["--dry-run", "--release"],
