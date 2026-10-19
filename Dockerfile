@@ -308,7 +308,7 @@ ARG NUCLEO_VERSION=""
 ENV NUCLEO_VERSION=${NUCLEO_VERSION}
 RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       set -eu; \
-      node -e 'const fs=require("node:fs");const p="/app/dist/build-info.json";const v=process.env.OPENCLAW_DOCKER_BUILD_VERSION;let b={};try{b=JSON.parse(fs.readFileSync(p,"utf8"));}catch{}b.version=v;fs.mkdirSync("/app/dist",{recursive:true});fs.writeFileSync(p,JSON.stringify(b,null,2));'; \
+      node -e 'const fs=require("node:fs");const p="/app/dist/build-info.json";const v=process.env.OPENCLAW_DOCKER_BUILD_VERSION;const n=process.env.NUCLEO_VERSION;let b={};try{b=JSON.parse(fs.readFileSync(p,"utf8"));}catch{}b.version=v;if(n)b.nucleoVersion=n;fs.mkdirSync("/app/dist",{recursive:true});fs.writeFileSync(p,JSON.stringify(b,null,2));'; \
       pkg_version="$(node -p "require('/app/package.json').version")"; \
       build_info_version="$(node -p "require('/app/dist/build-info.json').version")"; \
       cli_version="$(node /app/openclaw.mjs --version 2>/dev/null | tr -d '\r')"; \
@@ -318,10 +318,15 @@ RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       if [ "$build_info_version" != "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
         echo "version assertion failed: dist/build-info.json=$build_info_version expected=$OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1; \
       fi; \
-      case "$cli_version" in \
-        *"$OPENCLAW_DOCKER_BUILD_VERSION"*) ;; \
-        *) echo "version assertion failed: openclaw.mjs --version=$cli_version expected to contain $OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1 ;; \
-      esac; \
+      if [ -z "$cli_version" ]; then \
+        echo "version assertion failed: openclaw.mjs --version printed nothing" >&2; exit 1; \
+      fi; \
+      if [ -n "$NUCLEO_VERSION" ]; then \
+        case "$cli_version" in \
+          *"$NUCLEO_VERSION"*) ;; \
+          *) echo "version assertion failed: openclaw.mjs --version=$cli_version expected to contain the nucleo version $NUCLEO_VERSION" >&2; exit 1 ;; \
+        esac; \
+      fi; \
     fi
 
 # Set to owner/repo to read update notices from that repository's GitHub releases instead of npm.
