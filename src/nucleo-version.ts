@@ -5,11 +5,48 @@
 // that compares it: plugin compatibility, build-info and the CLI all read one number. So the pin's
 // version stays exactly as upstream shipped it, and this module carries the number people see.
 //
-// NUCLEO_VERSION is set by the image build (distro/scripts/nucleo.mjs) as <version>-dev.<build>.
-// Unset, as in a plain checkout, the product version falls back to the OpenClaw version alone.
-export function resolveNucleoVersion(env: NodeJS.ProcessEnv = process.env): string | null {
+// The number reaches a running build two ways: NUCLEO_VERSION from the image build, and nucleoVersion
+// in dist/build-info.json, which the image stamps. The env var alone is not enough, because a gateway
+// started from a plain checkout, or from an image built before that ENV existed, has no env var and
+// would silently fall back to showing the OpenClaw version as if it were ours.
+import { createRequire } from "node:module";
+
+const BUILD_INFO_CANDIDATES = [
+  "../build-info.json",
+  "../../build-info.json",
+  "./build-info.json",
+] as const;
+
+export function readNucleoVersionFromBuildInfo(moduleUrl: string): string | null {
+  try {
+    const require = createRequire(moduleUrl);
+    for (const candidate of BUILD_INFO_CANDIDATES) {
+      try {
+        const parsed = require(candidate) as { nucleoVersion?: unknown };
+        const value = typeof parsed.nucleoVersion === "string" ? parsed.nucleoVersion.trim() : "";
+        if (value) {
+          return value;
+        }
+      } catch {
+        // ignore missing or unreadable candidate
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveNucleoVersion(
+  env: NodeJS.ProcessEnv = process.env,
+  moduleUrl: string = import.meta.url,
+  readBuildInfo: (url: string) => string | null = readNucleoVersionFromBuildInfo,
+): string | null {
   const value = env.NUCLEO_VERSION?.trim();
-  return value ? value : null;
+  if (value) {
+    return value;
+  }
+  return readBuildInfo(moduleUrl);
 }
 
 /**
