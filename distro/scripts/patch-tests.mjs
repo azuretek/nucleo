@@ -40,24 +40,20 @@ const patches = manifest.patches.filter((p) => (only ? p.n === only : true));
 let held = 0;
 const missing = [];
 for (const p of patches) {
-  // A tooling patch with no test file of its own names the gate step that exercises it, and
-  // counts only when that step is in this manifest's gates, so the claim is always checked.
-  if (
-    !(p.tests || []).length &&
-    p.coveredBy &&
-    ((manifest.gates || []).includes(p.coveredBy) ||
-      // A Dockerfile change is exercised by the image build that follows a green gate, and a
-      // red image build stops the chain before anything is published.
-      p.coveredBy === "image")
-  ) {
+  // The step definition names the patches it covers, so a patch never has to know about the
+  // build. A patch with no test file of its own is satisfied only when a declared step covers it.
+  const coveringStep = (manifest.buildSteps || []).find(
+    (step) => Array.isArray(step.covers) && step.covers.includes(p.branch),
+  );
+  if (!(p.tests || []).length && coveringStep) {
     held += 1;
     console.log(
       String(p.n).padStart(2) +
         " " +
         p.branch.padEnd(46) +
         " GATE  covered by the " +
-        p.coveredBy +
-        " gate step",
+        coveringStep.name +
+        " step",
     );
     continue;
   }

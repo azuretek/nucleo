@@ -311,7 +311,7 @@
   "cachesNote": "Bounds for what a host running the gate or build keeps between runs. cache-bound.mjs trims the Node compile cache and the Vitest module cache least recently used first before a run, and the image build trims the docker build cache to dockerBuildMaxGb after it, so a repeat run stays warm and the disk stays bounded.",
   "buildSteps": [
     {
-      "name": "image",
+      "name": "build",
       "covers": [
         "fix/distro-not-upstream-source",
         "fix/boundary-dts-timeout-knob",
