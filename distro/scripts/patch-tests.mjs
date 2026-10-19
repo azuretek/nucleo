@@ -39,6 +39,7 @@ if (!existsSync(checkout)) {
 const patches = manifest.patches.filter((p) => (only ? p.n === only : true));
 let held = 0;
 const missing = [];
+const work = [];
 for (const p of patches) {
   // The step definition names the patches it covers, so a patch never has to know about the
   // build. A patch with no test file of its own is satisfied only when a declared step covers it.
@@ -68,33 +69,78 @@ for (const p of patches) {
     missing.push(p.branch + " (tests absent)");
     continue;
   }
-  // ★ Bounded per patch. An unbounded wait means one hung integration test stalls the whole
-  // suite silently, which is indistinguishable from "still working" and wastes the run.
-  const PER_PATCH_MS = 10 * 60 * 1000;
-  const r = spawnSync("pnpm", ["exec", "vitest", "run", ...files], {
+  work.push({ patch: p, files });
+}
+
+// ★ One vitest process for every patch, not one per patch. Sixteen invocations paid the whole
+// module-graph transform sixteen times, which dominated this step. vitest already runs files in
+// its own pool, so a green run is a single spawn; only a red run falls back to per-patch runs,
+// and only so the failing patch prints its own assertion.
+const allFiles = [...new Set(work.flatMap((w) => w.files))];
+const PER_PATCH_MS = 10 * 60 * 1000;
+const TOTAL_MS = 10 * 60 * 1000;
+const runFiles = (files, timeoutMs) =>
+  spawnSync("pnpm", ["exec", "vitest", "run", ...files], {
     cwd: checkout,
     encoding: "utf8",
     maxBuffer: 1 << 30,
-    timeout: PER_PATCH_MS,
+    timeout: timeoutMs,
     killSignal: "SIGTERM",
   });
-  const timedOut = r.signal === "SIGTERM" || /ETIMEDOUT/.test(String(r.error && r.error.code));
-  const ok = r.status === 0;
-  if (ok) held += 1;
-  else missing.push(p.branch);
-  const mark = ok ? " HELD " : timedOut ? " TIME " : " FAIL ";
+
+if (work.length) {
+  const started = Date.now();
+  const combined = runFiles(allFiles, TOTAL_MS);
+  const seconds = Math.round((Date.now() - started) / 1000);
   console.log(
-    String(p.n).padStart(2) + " " + p.branch.padEnd(46) + mark + " " + p.featureOrFix.slice(0, 58),
+    "   one vitest run over " +
+      allFiles.length +
+      " files for " +
+      work.length +
+      " patches: rc=" +
+      combined.status +
+      " in " +
+      seconds +
+      "s",
   );
-  // A red patch prints its own test output, so the gate log shows the failing assertion
-  // rather than a bare FAIL that has to be reproduced by hand.
-  if (!ok) console.log(String((r.stdout || "") + (r.stderr || "")).slice(-6000));
-  if (timedOut)
-    console.log(
-      "     timed out after " +
-        Math.round(PER_PATCH_MS / 60000) +
-        " minutes; a bounded failure is a result, an unbounded one is not",
-    );
+  if (combined.status === 0) {
+    held += work.length;
+    for (const w of work) {
+      console.log(
+        String(w.patch.n).padStart(2) +
+          " " +
+          w.patch.branch.padEnd(46) +
+          " HELD  " +
+          w.patch.featureOrFix.slice(0, 58),
+      );
+    }
+  } else {
+    // Attribute the failure. Only reached when something is already red, so the extra spawns
+    // cost nothing on the happy path.
+    for (const w of work) {
+      const r = runFiles(w.files, PER_PATCH_MS);
+      const timedOut = r.signal === "SIGTERM" || /ETIMEDOUT/.test(String(r.error && r.error.code));
+      const ok = r.status === 0;
+      if (ok) held += 1;
+      else missing.push(w.patch.branch);
+      const mark = ok ? " HELD " : timedOut ? " TIME " : " FAIL ";
+      console.log(
+        String(w.patch.n).padStart(2) +
+          " " +
+          w.patch.branch.padEnd(46) +
+          mark +
+          " " +
+          w.patch.featureOrFix.slice(0, 58),
+      );
+      if (!ok) console.log(String((r.stdout || "") + (r.stderr || "")).slice(-6000));
+      if (timedOut)
+        console.log(
+          "     timed out after " +
+            Math.round(PER_PATCH_MS / 60000) +
+            " minutes; a bounded failure is a result, an unbounded one is not",
+        );
+    }
+  }
 }
 console.log("== patch tests held=" + held + " of " + patches.length + " ==");
 if (missing.length) {
