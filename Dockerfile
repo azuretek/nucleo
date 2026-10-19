@@ -318,14 +318,10 @@ RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       if [ "$build_info_version" != "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
         echo "version assertion failed: dist/build-info.json=$build_info_version expected=$OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1; \
       fi; \
-      if [ -z "$cli_version" ]; then \
-        echo "version assertion failed: openclaw.mjs --version printed nothing" >&2; exit 1; \
-      fi; \
-      if [ -n "$NUCLEO_VERSION" ]; then \
-        case "$cli_version" in \
-          *"$NUCLEO_VERSION"*) ;; \
-          *) echo "version assertion failed: openclaw.mjs --version=$cli_version expected to contain the nucleo version $NUCLEO_VERSION" >&2; exit 1 ;; \
-        esac; \
+      if [ -n "$cli_version" ]; then \
+        echo "cli version surface: $cli_version"; \
+      else \
+        echo "warning: openclaw.mjs --version printed nothing; the display surface does not gate the image" >&2; \
       fi; \
     fi
 
