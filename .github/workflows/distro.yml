@@ -33,6 +33,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      # gate lint compares the pin against the distro branch. A pull-request
+      # checkout has no local main, so create it from the PR base; measured
+      # 2026-10-19, every PR failed at git rev-parse main.
+      - name: give the gate a main branch to compare against
+        if: github.event_name == 'pull_request'
+        run: git branch --force main "origin/${{ github.base_ref }}"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
