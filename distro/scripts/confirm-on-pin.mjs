@@ -44,7 +44,7 @@ let pass = 0,
   skip = 0;
 const verdicts = [];
 for (const p of patches) {
-  const files = p.behaviourTests || [];
+  const files = p.tests || [];
   let placed = [];
   for (const f of files) {
     const co = git(["checkout", BR + "/" + p.branch, "--", f]);

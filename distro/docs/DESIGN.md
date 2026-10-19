@@ -52,7 +52,7 @@ Three things are near-universal in that practice, and this repository depends on
 
 - **Provenance in the patch itself.** Debian DEP-3 header carries Description, Origin, Bug, Forwarded and
   Applied-Upstream so that "is this patch still needed?" is answerable without asking a person. Here the
-  manifest plays that role: branch, subject, behaviour and behaviourTests.
+  manifest plays that role: branch, subject, behaviour and tests.
 - **Upstream-first.** Debian and Fedora both treat a patch as something to forward and then delete. The replay
   resolves conflicts the same way, preferring upstream where upstream already made the change, and records the
   count rather than deciding quietly.
