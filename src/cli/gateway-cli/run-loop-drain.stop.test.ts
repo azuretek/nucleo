@@ -52,7 +52,7 @@ function runStop(
 }
 
 describe("gateway stop drain", () => {
-  it("refuses new work, then cancels, before it waits for anything", async () => {
+  it("refuses new work, then joins what is durable, and cancels nothing that settled", async () => {
     const { spies, markDraining, logger } = await runStop(
       { drained: true, snapshot: idleSnapshot },
       GATEWAY_STOP_DRAIN_HARD_LIMIT_MS,
@@ -60,38 +60,42 @@ describe("gateway stop drain", () => {
 
     expect(markDraining).toHaveBeenCalledWith("stop (SIGTERM)");
     expect(markDraining.mock.invocationCallOrder[0]).toBeLessThan(
-      spies.abortEmbeddedAgentRun.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
-    );
-    expect(spies.abortEmbeddedAgentRun).toHaveBeenCalledWith(undefined, { mode: "all" });
-    expect(spies.abortActiveCronTaskRuns).toHaveBeenCalledWith("Gateway stopping.");
-    expect(spies.abortEmbeddedAgentRun.mock.invocationCallOrder[0]).toBeLessThan(
       spies.waitForGatewayActiveWork.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
     );
+    // An adopted channel turn carries input no later process can recover, so a
+    // stop never cancels work that settled inside the ceiling.
+    expect(spies.abortEmbeddedAgentRun).not.toHaveBeenCalled();
+    expect(spies.abortActiveCronTaskRuns).not.toHaveBeenCalled();
     expect(spies.waitForGatewayActiveWork).toHaveBeenCalledWith(
       GATEWAY_STOP_DRAIN_HARD_LIMIT_MS,
       expect.anything(),
     );
-    const phases = logger.info.mock.calls.map((call) => String(call[0]));
-    expect(phases[0]).toContain("shutdown phase 1/4 refused new work");
-    expect(phases[1]).toContain("shutdown phase 2/4 cancelled in-flight work");
-    expect(phases[2]).toContain("shutdown phase 3/4 active work settled");
-    expect(phases[3]).toContain("shutdown phase 4/4 beginning server close");
+    const lines = logger.info.mock.calls.map((call) => String(call[0]));
+    expect(lines[0]).toContain("shutdown phase 1/4 refused new work");
+    expect(lines[1]).toContain("shutdown phase 2/4 active work settled");
+    expect(lines[2]).toBe("active-work drain settled; beginning server close");
+    expect(lines[3]).toContain("shutdown phase 3/4 beginning server close");
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 
-  it("names the ceiling it spent and does not cancel a second time", async () => {
+  it("cancels only what outlives the ceiling, after the join, and names the ceiling", async () => {
     const { spies, recordWarning, logger } = await runStop(
       { drained: false, snapshot: busySnapshot },
       GATEWAY_STOP_DRAIN_HARD_LIMIT_MS,
     );
 
+    expect(spies.waitForGatewayActiveWork.mock.invocationCallOrder[0]).toBeLessThan(
+      spies.abortEmbeddedAgentRun.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
     expect(spies.abortEmbeddedAgentRun).toHaveBeenCalledTimes(1);
+    expect(spies.abortEmbeddedAgentRun).toHaveBeenCalledWith(undefined, { mode: "all" });
+    expect(spies.abortActiveCronTaskRuns).toHaveBeenCalledWith("Gateway stopping.");
     expect(recordWarning).toHaveBeenCalledWith(
       expect.stringContaining("stop drain ceiling 30000ms reached"),
     );
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("embeddedRuns=1"));
-    const phases = logger.info.mock.calls.map((call) => String(call[0]));
-    expect(phases.at(-1)).toContain("shutdown phase 4/4 beginning server close");
-    expect(phases.some((line) => line.includes("3/4 active work settled"))).toBe(false);
+    const lines = logger.info.mock.calls.map((call) => String(call[0]));
+    expect(lines.some((line) => line.includes("cancelling what is left"))).toBe(true);
   });
 });
 
