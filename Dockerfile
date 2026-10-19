@@ -311,7 +311,7 @@ RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       node -e 'const fs=require("node:fs");const p="/app/dist/build-info.json";const v=process.env.OPENCLAW_DOCKER_BUILD_VERSION;const n=process.env.NUCLEO_VERSION;let b={};try{b=JSON.parse(fs.readFileSync(p,"utf8"));}catch{}b.version=v;if(n)b.nucleoVersion=n;fs.mkdirSync("/app/dist",{recursive:true});fs.writeFileSync(p,JSON.stringify(b,null,2));'; \
       pkg_version="$(node -p "require('/app/package.json').version")"; \
       build_info_version="$(node -p "require('/app/dist/build-info.json').version")"; \
-      cli_version="$(node /app/openclaw.mjs --version 2>/dev/null | tr -d '\r')"; \
+      cli_version="$(node /app/openclaw.mjs --version 2>&1 | tr -d '\r')"; \
       if [ "$pkg_version" != "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
         echo "version assertion failed: package.json=$pkg_version expected=$OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1; \
       fi; \
