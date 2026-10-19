@@ -641,18 +641,18 @@ function gate() {
   const env = { ...process.env, ...changedPathsEnv() };
   let green = true;
   for (const step of MANIFEST.gates) {
-    // 'behaviours' runs every carried patch's own tests; every other step is a pnpm script.
+    // 'tests' runs every carried patch's own tests; every other step is a pnpm script.
     const [bin, args] =
-      step === "behaviours"
+      step === "tests"
         ? [
             process.execPath,
             [
-              decodeURIComponent(new URL("./behaviours.mjs", import.meta.url).pathname),
+              decodeURIComponent(new URL("./patch-tests.mjs", import.meta.url).pathname),
               MANIFEST.checkout,
             ],
           ]
         : ["pnpm", ["run", step]];
-    log(`gate: ${step === "behaviours" ? "our patches own tests" : "pnpm run " + step}`);
+    log(`gate: ${step === "tests" ? "our patch tests" : "pnpm run " + step}`);
     const stepFile = file.replace(/\.log$/, "-" + step + ".log");
     event("gate step " + step + " start log=" + stepFile);
     const started = Date.now();
@@ -899,7 +899,7 @@ function releaseDev() {
     "",
     "Image: `" + image + "`",
     "",
-    "Passed the gate (check, then each patch's own tests) and the image build.",
+    "Passed the gate (lint, then our patch tests) and the image build.",
     "",
     "## Patches",
     "",
