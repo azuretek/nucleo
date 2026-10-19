@@ -60,6 +60,19 @@ const gitTry = (args, opts = {}) => {
   return { ok: r.status === 0, out: (r.stdout || "").trim(), err: (r.stderr || "").trim() };
 };
 const sha = (ref) => gitTry(["rev-parse", "--short", ref]).out;
+// A pull request checkout is a detached merge commit, where the distro branch has no local
+// ref. Resolve it from the remote before falling back to HEAD, so a command that needs the
+// branch works on a pull request instead of dying on a branch ref that is not there.
+function distroRef() {
+  for (const ref of [
+    MANIFEST.distroBranch,
+    MANIFEST.fork.remote + "/" + MANIFEST.distroBranch,
+    "HEAD",
+  ]) {
+    if (gitTry(["rev-parse", "--verify", ref + "^{commit}"]).ok) return ref;
+  }
+  return "HEAD";
+}
 
 function logPath(kind) {
   mkdirSync(MANIFEST.logs, { recursive: true });
@@ -103,7 +116,7 @@ function duplicateTopLevelDeclarations() {
   // ★ The bundler was the first thing to notice a duplicated block, an hour and a full
   // build later. This notices it at the moment it is created, so the failure is named
   // where it happens instead of at a build step that cannot explain it.
-  const files = gitTry(["diff", "--name-only", MANIFEST.pinnedTag + ".." + MANIFEST.distroBranch])
+  const files = gitTry(["diff", "--name-only", MANIFEST.pinnedTag + ".." + distroRef()])
     .out.split("\n")
     .filter(function (f) {
       return f.slice(-3) === ".ts";
@@ -343,7 +356,7 @@ function sync() {
 
   const dupes = duplicateTopLevelDeclarations();
   for (const d of dupes) appendFileSync(file, "DUPLICATE-DECLARATION " + d + "\n");
-  const head = sha(MANIFEST.distroBranch);
+  const head = sha(distroRef());
   // ★ Our own paths live only on this branch, never in the pin, so the reset above would drop
   // them: the tooling that runs this assembly lives here, and so does the one workflow the fork
   // keeps. Take each from the branch tip captured above and record the carry. This is the mirror
@@ -587,11 +600,11 @@ function verify() {
 // never touched (three pin-owned files, 2026-10-08). Reproduce the CI reading: tell the lint
 // which files this distro changed, so untouched files stay advisory and our own stay enforced.
 function changedPathsEnv() {
-  const r = spawnSync(
-    "git",
-    ["diff", "--name-only", MANIFEST.pinnedCommit + ".." + MANIFEST.distroBranch],
-    { cwd: MANIFEST.checkout, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  );
+  const r = spawnSync("git", ["diff", "--name-only", MANIFEST.pinnedCommit + ".." + distroRef()], {
+    cwd: MANIFEST.checkout,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   if (r.status !== 0) return {};
   const paths = (r.stdout || "")
     .split("\n")
@@ -632,10 +645,10 @@ function tailOf(file, bytes) {
 
 function gate() {
   const file = logPath("gate");
-  const head = sha(MANIFEST.distroBranch);
+  const head = sha(distroRef());
   appendFileSync(
     file,
-    `gate ${new Date().toISOString()} commit=${git(["rev-parse", MANIFEST.distroBranch])}\n`,
+    `gate ${new Date().toISOString()} commit=${git(["rev-parse", distroRef()])}\n`,
   );
   event("gate start " + head);
   const env = { ...process.env, ...changedPathsEnv() };
@@ -685,6 +698,7 @@ function gate() {
       `\n### ${step} rc=${r.status}${why} ${seconds}s log=${stepFile}\n${tailOf(stepFile, 6000)}\n`,
     );
     event("gate step " + step + " rc=" + r.status + why + " " + seconds + "s");
+    log("  " + step + " rc=" + r.status + why + " in " + seconds + "s");
     const ci = process.env.GITHUB_ACTIONS === "true";
     if (r.status !== 0) {
       green = false;
