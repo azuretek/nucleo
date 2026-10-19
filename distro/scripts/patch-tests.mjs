@@ -43,12 +43,12 @@ for (const p of patches) {
   // A tooling patch with no test file of its own names the gate step that exercises it, and
   // counts only when that step is in this manifest's gates, so the claim is always checked.
   if (
-    !(p.behaviourTests || []).length &&
-    p.behaviourCoveredBy &&
-    ((manifest.gates || []).includes(p.behaviourCoveredBy) ||
+    !(p.tests || []).length &&
+    p.coveredBy &&
+    ((manifest.gates || []).includes(p.coveredBy) ||
       // A Dockerfile change is exercised by the image build that follows a green gate, and a
       // red image build stops the chain before anything is published.
-      p.behaviourCoveredBy === "image")
+      p.coveredBy === "image")
   ) {
     held += 1;
     console.log(
@@ -56,12 +56,12 @@ for (const p of patches) {
         " " +
         p.branch.padEnd(46) +
         " GATE  covered by the " +
-        p.behaviourCoveredBy +
+        p.coveredBy +
         " gate step",
     );
     continue;
   }
-  const files = (p.behaviourTests || []).filter((f) => existsSync(checkout + "/" + f));
+  const files = (p.tests || []).filter((f) => existsSync(checkout + "/" + f));
   if (!files.length) {
     console.log(
       String(p.n).padStart(2) +

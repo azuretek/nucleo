@@ -37,7 +37,7 @@
       "branch": "fix/image-draft-snapshot",
       "subject": "image drafts survive a temporary file disappearing",
       "behaviour": "image drafts survive a temporary file disappearing",
-      "behaviourTests": [
+      "tests": [
         "ui/src/pages/chat/attachment-payload-snapshot.test.ts",
         "ui/src/pages/chat/durable-composer-storage-warning.test.ts"
       ]
@@ -48,7 +48,7 @@
       "branch": "fix/chat-send-reserved-marker",
       "subject": "chat.send after a reconnect is no longer rejected",
       "behaviour": "chat.send after a reconnect is no longer rejected",
-      "behaviourTests": [
+      "tests": [
         "src/gateway/server-methods/chat-send-request.test.ts",
         "src/gateway/server/ws-connection/handshake-auth-helpers.linux.test.ts",
         "src/utils/message-channel.test.ts"
@@ -60,7 +60,7 @@
       "branch": "fix/openai-nano-platform-route",
       "subject": "gpt-5.4-nano no longer rejects keys as incompatible",
       "behaviour": "gpt-5.4-nano no longer rejects keys as incompatible",
-      "behaviourTests": [
+      "tests": [
         "extensions/openai/catalog-expectations.test-support.ts",
         "extensions/openai/model-route-contract.test.ts",
         "extensions/openai/openai-provider-nano-route.test.ts",
@@ -77,7 +77,7 @@
       "branch": "fix/surface-model-ref-resolution-reason",
       "subject": "config says why a model ref could not resolve",
       "behaviour": "config says why a model ref could not resolve",
-      "behaviourTests": [
+      "tests": [
         "src/cli/config-model-validation.test.ts",
         "src/cli/config-model-validation.reporting.test.ts"
       ]
@@ -88,7 +88,7 @@
       "branch": "fix/exec-completion-steering",
       "subject": "background-exec completions steer into busy sessions",
       "behaviour": "background-exec completions steer into busy sessions",
-      "behaviourTests": [
+      "tests": [
         "src/agents/bash-process-registry.test.ts",
         "src/agents/bash-tools.exec-runtime.settlement.test.ts",
         "src/agents/bash-tools.exec-runtime.test.ts",
@@ -122,7 +122,7 @@
       "branch": "fix/lobster-llm-adapter-current",
       "subject": "Lobster runs native LLM stages in embedded workflows",
       "behaviour": "Lobster runs native LLM stages in embedded workflows",
-      "behaviourTests": [
+      "tests": [
         "extensions/lobster/src/lobster-checkpoint-provenance.test.ts",
         "extensions/lobster/src/lobster-gateway-scope.test.ts",
         "extensions/lobster/src/lobster-runner.test.ts",
@@ -135,7 +135,7 @@
       "branch": "fix/gateway-startup-health-cold-worker-cache",
       "subject": "bound a cold Vitest worker build",
       "behaviour": "bound a cold Vitest worker build",
-      "behaviourTests": [
+      "tests": [
         "test/scripts/run-vitest.test.ts"
       ]
     },
@@ -145,7 +145,7 @@
       "branch": "fix/catalog-startup-phase-trace",
       "subject": "name the startup phase that overruns the catalog deadline",
       "behaviour": "name the startup phase that overruns the catalog deadline",
-      "behaviourTests": [
+      "tests": [
         "src/gateway/server.catalog-startup.test.ts"
       ]
     },
@@ -155,7 +155,7 @@
       "branch": "fix/cron-forced-run-ack-budget",
       "subject": "cron forced-run ack budget under load",
       "behaviour": "cron forced-run ack budget under load",
-      "behaviourTests": [
+      "tests": [
         "src/gateway/server.cron.test.ts"
       ]
     },
@@ -165,7 +165,7 @@
       "branch": "fix/subagent-orphan-retry-timer",
       "subject": "orphan-recovery restart when the retry timer is not yet scheduled",
       "behaviour": "orphan-recovery restart when the retry timer is not yet scheduled",
-      "behaviourTests": [
+      "tests": [
         "src/agents/subagents/registry/subagent-orphan-recovery.restart-integration.test.ts"
       ]
     },
@@ -175,7 +175,7 @@
       "branch": "fix/e2e-built-runtime-typed",
       "subject": "run the retry-after e2e against the built runtime",
       "behaviour": "run the retry-after e2e against the built runtime",
-      "behaviourTests": [
+      "tests": [
         "src/agents/embedded-agent-runner.retry-after-failover.e2e.test.ts",
         "test/scripts/tsdown-config.test.ts",
         "test/scripts/tsgo-core-test-dist-build.test.ts",
@@ -188,7 +188,7 @@
       "branch": "fix/distro-not-upstream-source",
       "subject": "the fork tooling tree is not scanned as upstream source",
       "behaviour": "the fork tooling tree is not scanned as upstream source",
-      "behaviourCoveredBy": "check"
+      "coveredBy": "check"
     },
     {
       "n": 15,
@@ -196,7 +196,7 @@
       "branch": "fix/boundary-dts-timeout-knob",
       "subject": "let a slow host raise the boundary dts timeout",
       "behaviour": "let a slow host raise the boundary dts timeout",
-      "behaviourCoveredBy": "check"
+      "coveredBy": "check"
     },
     {
       "n": 19,
@@ -204,7 +204,7 @@
       "branch": "perf/oxlint-extension-chunk-size",
       "subject": "let any host size serial plugin lint chunks",
       "behaviour": "let any host size serial plugin lint chunks",
-      "behaviourTests": [
+      "tests": [
         "test/scripts/run-oxlint.test.ts"
       ]
     },
@@ -214,7 +214,7 @@
       "branch": "fix/typecheck-core-pin",
       "subject": "type the WAL timer stub and the Vitest project cache hook",
       "behaviour": "type the WAL timer stub and the Vitest project cache hook",
-      "behaviourCoveredBy": "check"
+      "coveredBy": "check"
     },
     {
       "n": 25,
@@ -222,7 +222,7 @@
       "branch": "nucleo/sqlite-snapshot-staging-reuse",
       "subject": "reuse one staging directory across snapshot retries",
       "behaviour": "a retried read-only state snapshot reuses one staging directory",
-      "behaviourTests": [
+      "tests": [
         "src/infra/sqlite-readonly-location.copy.test.ts",
         "src/infra/sqlite-readonly-location.test.ts"
       ]
@@ -233,7 +233,7 @@
       "branch": "nucleo/session-projection-config-republish",
       "subject": "stop a republished snapshot from invalidating session rows",
       "behaviour": "republishing an unchanged config does not invalidate session rows",
-      "behaviourTests": [
+      "tests": [
         "src/config/runtime-snapshot.preparation.test.ts",
         "src/gateway/session-row-projection.invalidation.test.ts"
       ]
@@ -244,7 +244,7 @@
       "branch": "nucleo/docker-build-step-cache",
       "subject": "keep build-all's step cache across image builds",
       "behaviour": "the image build reuses build-all's step cache",
-      "behaviourCoveredBy": "image"
+      "coveredBy": "image"
     },
     {
       "n": 28,
@@ -252,7 +252,7 @@
       "branch": "nucleo/product-name",
       "subject": "show Núcleo as the product name people see",
       "behaviour": "the CLI, its banner and errors, and the Control UI show Núcleo, and the CLI installs as nucleo",
-      "behaviourTests": [
+      "tests": [
         "src/cli/banner.test.ts",
         "src/cli/program/help.test.ts",
         "src/cli/program/error-output.test.ts",
@@ -268,7 +268,7 @@
       "branch": "nucleo/update-source",
       "subject": "read update notices from Núcleo's own releases",
       "behaviour": "with OPENCLAW_UPDATE_GITHUB_REPO set, which the Núcleo image sets, the gateway's update check and update status read that repository's GitHub releases instead of the openclaw npm package, name the release page, and never hand a release to the package auto-updater",
-      "behaviourTests": [
+      "tests": [
         "src/infra/update-github-releases.test.ts",
         "src/infra/update-startup.github-releases.test.ts"
       ]
