@@ -553,7 +553,7 @@ function verify() {
     // decides is the BEHAVIOUR, so a patch whose lines did not all land is accepted when it names the
     // behaviour and its tests, and is a hard failure when it names none. That is the same acceptance
     // criterion the manifest carries for every patch.
-    const behaviour = Array.isArray(p.behaviourTests) && p.behaviourTests.length ? p.behaviour : "";
+    const behaviour = Array.isArray(p.tests) && p.tests.length ? p.behaviour : "";
     if (absent === 0) {
       log(`  ok      ${p.n} ${p.branch} (${mine} carried, ${theirs} left to upstream)`);
       ok++;
