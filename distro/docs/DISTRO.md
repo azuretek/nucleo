@@ -33,6 +33,8 @@ node scripts/nucleo.mjs status               # where the pin, the branch and the
 
 **It runs only when the distro branch is not covered.** Covered means GitHub has a successful `distro.yml` push run for exactly that commit. A run still in progress counts as in hand, so the driver never hands off over a build. A failed run is not covered: assembling again cuts a new commit, and its push is the retry.
 
+**Covered also means the inputs have not moved.** A green run covers the commit it built, not the patch branches, so a patch branch that advances would otherwise wait forever behind a commit GitHub already built. The driver asks `pipeline.mjs status --json` for `inputsUnchanged` and assembles a new candidate when the patch tips differ from the last run record; a missing record counts as changed.
+
 **One run at a time.** A lock refuses a second run, because two long git operations in one worktree corrupt the index. A lock whose holder is dead is cleared at once.
 
 ## Watching a run
