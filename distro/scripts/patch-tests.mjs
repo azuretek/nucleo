@@ -6,7 +6,7 @@
 // it later the same check keeps passing. So each patch names the tests that encode its behaviour,
 // and passing those tests is the acceptance criterion, never "our diff applied".
 //
-// Usage: node scripts/behaviours.mjs <checkout> [patchNumber]
+// Usage: node scripts/patch-tests.mjs <checkout> [patchNumber]
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -100,7 +100,7 @@ for (const p of patches) {
         " minutes; a bounded failure is a result, an unbounded one is not",
     );
 }
-console.log("== behaviours held=" + held + " of " + patches.length + " ==");
+console.log("== patch tests held=" + held + " of " + patches.length + " ==");
 if (missing.length) {
   console.log("== not satisfied: " + missing.join(", ") + " ==");
   process.exitCode = 1;

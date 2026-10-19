@@ -65,7 +65,7 @@ test("off CI there are no workflow commands", () => {
 
 test("a log with no recognisable reason still says so and still fails loudly", () => {
   const out = failureReport({
-    step: "behaviours",
+    step: "tests",
     rc: 137,
     logFile: "x.log",
     text: "killed\n",
