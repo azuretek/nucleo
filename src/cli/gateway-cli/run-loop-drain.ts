@@ -98,27 +98,26 @@ export async function drainGatewayActiveWork({
     try {
       markGatewayRestartTrace("stop.drain.begin");
       // Work admitted after this point cannot outlive the process, so admitting
-      // it would only spend the ceiling on something about to be cancelled.
+      // it would only spend the ceiling on something about to disappear.
       markDraining(formatShutdownReason(request));
       reportPhase("1/4 refused new work");
-      // Aborting is the capture, not the loss: an embedded turn keeps its user
-      // message in the transcript, and its pending input row is marked
-      // interrupted rather than removed, so a follow-up resumes from the full
-      // context. Cancelling before the wait is what keeps the wait short.
-      const abortedEmbedded = runtime.abortEmbeddedAgentRun(undefined, { mode: "all" });
-      const abortedCronRuns = runtime.abortActiveCronTaskRuns("Gateway stopping.");
-      reportPhase(
-        `2/4 cancelled in-flight work (embedded=${abortedEmbedded ? "aborted" : "none"}, cron=${abortedCronRuns})`,
-      );
+      // Durable work is joined, never abandoned: an adopted channel turn carries
+      // input that no later process can recover, so it settles first and is
+      // cancelled only if it outlives the ceiling. The wait itself ends the
+      // moment the active-work snapshot is idle, so the ceiling is a hard limit
+      // rather than time spent.
       const activeWorkDrain = await measureGatewayRestartTrace("stop.drain", () =>
         runtime.waitForGatewayActiveWork(drainTimeoutMs, {
           onSnapshot: reportDrainSnapshot,
         }),
       );
       if (activeWorkDrain.drained) {
-        reportPhase("3/4 active work settled");
+        reportPhase("2/4 active work settled");
       } else {
-        const warning = `stop drain ceiling ${ceiling} reached; closing with work still active: ${formatDrainCounts(activeWorkDrain.snapshot)}`;
+        reportPhase(`2/4 ceiling ${ceiling} reached; cancelling what is left`);
+        const abortedEmbedded = runtime.abortEmbeddedAgentRun(undefined, { mode: "all" });
+        const abortedCronRuns = runtime.abortActiveCronTaskRuns("Gateway stopping.");
+        const warning = `stop drain ceiling ${ceiling} reached; cancelled in-flight work (embedded=${abortedEmbedded ? "aborted" : "none"}, cron=${abortedCronRuns}): ${formatDrainCounts(activeWorkDrain.snapshot)}`;
         recordWarning(warning);
         logger.warn(warning);
       }
@@ -127,7 +126,10 @@ export async function drainGatewayActiveWork({
         `gateway active-work drain failed; proceeding with shutdown: ${formatErrorMessage(err)}`,
       );
     }
-    reportPhase("4/4 beginning server close");
+    // Kept verbatim: the direct-stop process proof asserts this exact line
+    // before gateway-close.
+    logger.info("active-work drain settled; beginning server close");
+    reportPhase("3/4 beginning server close");
   }
 }
 
