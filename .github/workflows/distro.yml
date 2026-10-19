@@ -136,6 +136,24 @@ jobs:
           build=$(node distro/scripts/nucleo.mjs build-number)
           echo "build=$build" >> "$GITHUB_OUTPUT"
           NUCLEO_BUILD_NUMBER="$build" node distro/scripts/nucleo.mjs build
+      # The image is an artifact only once it can start. The Dockerfile's own
+      # version assertion gates the build, and this runs the pushed image, which
+      # is what the release step would publish. Measured on dev.104: the entry
+      # point imported a module the runtime stage never copied, and every start
+      # died before the gateway bound.
+      - name: smoke test the pushed image
+        env:
+          NUCLEO_BUILD_NUMBER: ${{ steps.build.outputs.build }}
+        run: |
+          image=$(node distro/scripts/nucleo.mjs build --dry-run | sed -n 's/^image \([^ ]*\) from .*/\1/p' | tail -1)
+          test -n "$image" || { echo "could not resolve the built image tag" >&2; exit 1; }
+          docker pull "$image"
+          version=$(docker run --rm --entrypoint node "$image" /app/openclaw.mjs --version)
+          echo "image version: $version"
+          pin=$(node -p 'require("./distro/nucleo.json").pinnedTag.replace(/^v/, "")')
+          printf '%s\n' "$version" | grep -q "Núcleo"
+          printf '%s\n' "$version" | grep -q -- "-dev.$NUCLEO_BUILD_NUMBER"
+          printf '%s\n' "$version" | grep -q -- "OpenClaw $pin"
 
   release:
     needs: build
@@ -155,7 +173,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NUCLEO_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
-          NUCLEO_BUILD_NUMBER: ${{ needs.image.outputs.build }}
+          NUCLEO_BUILD_NUMBER: ${{ needs.build.outputs.build }}
         run: node distro/scripts/nucleo.mjs release-dev
       - name: keep the newest ten dev images
         continue-on-error: true
