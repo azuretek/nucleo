@@ -74,7 +74,7 @@ jobs:
           key: node-compile-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: node-compile-${{ hashFiles('pnpm-lock.yaml') }}-
       - run: pnpm install --frozen-lockfile
-      - name: gate (check, then each carried patch's own tests)
+      - name: gate (lint, then each carried patch's own tests)
         run: node distro/scripts/nucleo.mjs gate
       - name: keep the gate logs
         if: always()
