@@ -29,8 +29,8 @@ One row per patch in `nucleo.json`, which is the machine-readable copy. Upstream
 
 1. Write it on a topic branch cut from the pinned release tag, never from upstream `main`. `sync` reports `authored_off_pin`, and 0 is the healthy number.
 2. If it fixes upstream, open it upstream as an issue and a pull request from a topic branch against their `main`, and backport it onto the pin on its own branch here.
-3. Add it to the manifest with its upstream number, the behaviour it exists for, and the tests that prove it, so its status is a lookup rather than a memory.
-4. Run the chain. A patch is accepted on its behaviour, never on its diff being present.
+3. Add it to the manifest with its upstream number, the feature or fix it exists for, and the tests that prove it, so its status is a lookup rather than a memory.
+4. Run the chain. A patch is accepted on its feature or fix, never on its diff being present.
 
 ## Carried and left to upstream
 

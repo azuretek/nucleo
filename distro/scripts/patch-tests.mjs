@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Checks the BEHAVIOUR each patch exists for, against a checkout.
 //
-// ★ Why behaviour and not the diff: a patch is carried because a behaviour is missing. If the
-// pinned release already has that behaviour, the port does not matter, and if upstream supplies
-// it later the same check keeps passing. So each patch names the tests that encode its behaviour,
+// ★ Why feature or fix and not the diff: a patch is carried because a feature or fix is missing. If the
+// pinned release already has that feature or fix, the port does not matter, and if upstream supplies
+// it later the same check keeps passing. So each patch names the tests that encode its feature or fix,
 // and passing those tests is the acceptance criterion, never "our diff applied".
 //
 // Usage: node scripts/patch-tests.mjs <checkout> [patchNumber]
@@ -88,7 +88,7 @@ for (const p of patches) {
   else missing.push(p.branch);
   const mark = ok ? " HELD " : timedOut ? " TIME " : " FAIL ";
   console.log(
-    String(p.n).padStart(2) + " " + p.branch.padEnd(46) + mark + " " + p.behaviour.slice(0, 58),
+    String(p.n).padStart(2) + " " + p.branch.padEnd(46) + mark + " " + p.featureOrFix.slice(0, 58),
   );
   // A red patch prints its own test output, so the gate log shows the failing assertion
   // rather than a bare FAIL that has to be reproduced by hand.

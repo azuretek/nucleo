@@ -33,9 +33,9 @@ Each patch is recorded in the manifest with its upstream PR number so its status
 
 Two measurements shaped this.
 
-First, the wholesale stack is not the way. Applying all twelve to the pin took the behaviours satisfied from 11 down to 7, so the stack as a whole regresses five of them. Patches therefore go back one at a time, each gated on its own.
+First, the wholesale stack is not the way. Applying all twelve to the pin took the feature or fixs satisfied from 11 down to 7, so the stack as a whole regresses five of them. Patches therefore go back one at a time, each gated on its own.
 
-The acceptance criterion is the BEHAVIOUR, never the diff. The replay resolves each conflict in upstream favour, so a line a patch added can be absent from the assembled tree because upstream solved that problem its own way, which is the policy working rather than a patch lost. Each patch therefore names the behaviour it exists for and the tests that encode it. A patch whose lines did not all land is reported as **partial** and must name that behaviour; a patch that names none is refused. Line presence cannot decide this on its own, and the measurement says so: our added lines are by definition not in the release we started from, so a check that only compares lines can neither pass nor fail with meaning.
+The acceptance criterion is the BEHAVIOUR, never the diff. The replay resolves each conflict in upstream favour, so a line a patch added can be absent from the assembled tree because upstream solved that problem its own way, which is the policy working rather than a patch lost. Each patch therefore names the feature or fix it exists for and the tests that encode it. A patch whose lines did not all land is reported as **partial** and must name that feature or fix; a patch that names none is refused. Line presence cannot decide this on its own, and the measurement says so: our added lines are by definition not in the release we started from, so a check that only compares lines can neither pass nor fail with meaning.
 
 Second, an improvement written against main cannot be applied to a release. On the first set, 12 of 12 branches were based on main, sitting 862 to 2942 commits past the pin. Replaying them collided, and a three-way apply could report success while changing nothing. scripts/port.mjs now names every adaptation point before a build runs, which on that set was 74 points across 51 files.
 
@@ -52,7 +52,7 @@ Three things are near-universal in that practice, and this repository depends on
 
 - **Provenance in the patch itself.** Debian DEP-3 header carries Description, Origin, Bug, Forwarded and
   Applied-Upstream so that "is this patch still needed?" is answerable without asking a person. Here the
-  manifest plays that role: branch, subject, behaviour and tests.
+  manifest plays that role: branch, subject, feature or fix and tests.
 - **Upstream-first.** Debian and Fedora both treat a patch as something to forward and then delete. The replay
   resolves conflicts the same way, preferring upstream where upstream already made the change, and records the
   count rather than deciding quietly.
@@ -66,9 +66,9 @@ Two habits in that practice are worth naming because they are easy to break:
   patch, and it is discouraged precisely because it silently reverts upstream own later edits to that same
   file. That is what pinOwnedFiles exists to prevent for ledgers and baselines: take upstream copy and change
   the input, never fork the file.
-- **A patch is accepted on the behaviour it exists for, not on its diff being present.** Most distributions
+- **A patch is accepted on the feature or fix it exists for, not on its diff being present.** Most distributions
   leave that question to the whole-package suite, so a patch that silently stopped doing its job surfaces
-  later. Here every patch names the behaviour and the tests that encode it, which is stricter, and which is
+  later. Here every patch names the feature or fix and the tests that encode it, which is stricter, and which is
   what turns a patch that stopped working into a reported failure rather than a mystery.
 
 ## The build
