@@ -49,6 +49,8 @@ export type ControlUiBootstrapConfig = {
   assistantAvatarReason?: string | null;
   assistantAgentId?: string;
   serverVersion?: string;
+  /** Núcleo version first, the OpenClaw version in parentheses. For display only. */
+  productVersion?: string;
   /** Exact immutable build serving this Control UI when available. */
   serverBuildId?: string;
   /**
