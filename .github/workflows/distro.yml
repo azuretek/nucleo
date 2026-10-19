@@ -86,6 +86,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      # gate tests records the distro branch commit, and a pull-request checkout
+      # has no local main. Same reason as the lint job above.
+      - name: give the gate a main branch to compare against
+        if: github.event_name == 'pull_request'
+        run: git branch --force main "origin/${{ github.base_ref }}"
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
