@@ -33,6 +33,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      # gate lint compares the pin against the distro branch. A pull-request
+      # checkout has no local main, so create it from the PR base; measured
+      # 2026-10-19, every PR failed at git rev-parse main.
+      - name: give the gate a main branch to compare against
+        if: github.event_name == 'pull_request'
+        run: git branch --force main "origin/${{ github.base_ref }}"
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
@@ -62,9 +68,9 @@ jobs:
 
   # ★ Test and build run here, on GitHub's hosted runners, like Chela and Cuate: every push to main
   # (the assembled tree, or a tooling change on it) is gated, built into the image, pushed to
-  # ghcr.io and published as a dev pre-release. Pull requests run only the fast checks above.
+  # ghcr.io and published as a dev pre-release. Pull requests run lint and tests, the two checks the
+  # branch ruleset requires; only a push builds and publishes.
   tests:
-    if: github.event_name != 'pull_request'
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 330
@@ -80,6 +86,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      # gate tests records the distro branch commit, and a pull-request checkout
+      # has no local main. Same reason as the lint job above.
+      - name: give the gate a main branch to compare against
+        if: github.event_name == 'pull_request'
+        run: git branch --force main "origin/${{ github.base_ref }}"
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
@@ -103,6 +114,8 @@ jobs:
           retention-days: 14
 
   build:
+    # A pull request runs the checks but never publishes an image.
+    if: github.event_name != 'pull_request'
     needs: [lint, tests]
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -136,6 +149,24 @@ jobs:
           build=$(node distro/scripts/nucleo.mjs build-number)
           echo "build=$build" >> "$GITHUB_OUTPUT"
           NUCLEO_BUILD_NUMBER="$build" node distro/scripts/nucleo.mjs build
+      # The image is an artifact only once it can start. The Dockerfile's own
+      # version assertion gates the build, and this runs the pushed image, which
+      # is what the release step would publish. Measured on dev.104: the entry
+      # point imported a module the runtime stage never copied, and every start
+      # died before the gateway bound.
+      - name: smoke test the pushed image
+        env:
+          NUCLEO_BUILD_NUMBER: ${{ steps.build.outputs.build }}
+        run: |
+          image=$(node distro/scripts/nucleo.mjs build --dry-run | sed -n 's/^image \([^ ]*\) from .*/\1/p' | tail -1)
+          test -n "$image" || { echo "could not resolve the built image tag" >&2; exit 1; }
+          docker pull "$image"
+          version=$(docker run --rm --entrypoint node "$image" /app/openclaw.mjs --version)
+          echo "image version: $version"
+          pin=$(node -p 'require("./distro/nucleo.json").pinnedTag.replace(/^v/, "")')
+          printf '%s\n' "$version" | grep -q "Núcleo"
+          printf '%s\n' "$version" | grep -q -- "-dev.$NUCLEO_BUILD_NUMBER"
+          printf '%s\n' "$version" | grep -q -- "OpenClaw $pin"
 
   release:
     needs: build
@@ -155,7 +186,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NUCLEO_IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
-          NUCLEO_BUILD_NUMBER: ${{ needs.image.outputs.build }}
+          NUCLEO_BUILD_NUMBER: ${{ needs.build.outputs.build }}
         run: node distro/scripts/nucleo.mjs release-dev
       - name: keep the newest ten dev images
         continue-on-error: true
