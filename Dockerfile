@@ -291,6 +291,11 @@ COPY --from=runtime-assets --chown=node:node /app/node-host-launcher.mjs .
 COPY --from=runtime-assets --chown=node:node /app/node-compile-cache.mjs .
 COPY --from=runtime-assets --chown=node:node /app/docker-entrypoint.mjs .
 COPY --from=runtime-assets --chown=node:node /app/openclaw.mjs .
+# openclaw.mjs runs from source and imports src/nucleo-version.ts, so the module
+# has to ship beside it. Node 24 strips its types at load. The version assertion
+# below fails the image if the pair is incomplete, which is how dev.104 shipped
+# an entry point that could not start.
+COPY --from=runtime-assets --chown=node:node /app/src/nucleo-version.ts ./src/nucleo-version.ts
 COPY --from=runtime-assets --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} ./${OPENCLAW_BUNDLED_PLUGIN_DIR}
 COPY --from=runtime-assets --chown=node:node /app/skills ./skills
 COPY --from=runtime-assets --chown=node:node /app/docs ./docs
@@ -303,9 +308,34 @@ ARG OPENCLAW_DOCKER_BUILD_VERSION
 ARG NUCLEO_VERSION=""
 ENV NUCLEO_VERSION=${NUCLEO_VERSION}
 RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
-      test "$(node -p "require(\"/app/package.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
-      test "$(node -p "require(\"/app/dist/build-info.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
-      node /app/openclaw.mjs --version | grep -q "$OPENCLAW_DOCKER_BUILD_VERSION"; \
+      set -eu; \
+      pkg_version="$(node -p "require(\"/app/package.json\").version")"; \
+      build_info_version="$(node -p "require(\"/app/dist/build-info.json\").version")"; \
+      if [ "$pkg_version" != "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
+        echo "version assertion failed: package.json=$pkg_version expected=$OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1; \
+      fi; \
+      if [ "$build_info_version" != "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
+        echo "version assertion failed: dist/build-info.json=$build_info_version expected=$OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1; \
+      fi; \
+      set +e; \
+      cli_output="$(node /app/openclaw.mjs --version 2>&1)"; cli_rc=$?; \
+      set -e; \
+      if [ "$cli_rc" -ne 0 ]; then \
+        echo "version assertion failed: openclaw.mjs --version exited $cli_rc" >&2; \
+        echo "$cli_output" >&2; \
+        exit 1; \
+      fi; \
+      case "$cli_output" in \
+        *"$OPENCLAW_DOCKER_BUILD_VERSION"*) ;; \
+        *) echo "version assertion failed: the CLI printed \"$cli_output\", which does not name $OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1 ;; \
+      esac; \
+      if [ -n "$NUCLEO_VERSION" ]; then \
+        case "$cli_output" in \
+          *"$NUCLEO_VERSION"*) ;; \
+          *) echo "version assertion failed: the CLI printed \"$cli_output\", which does not name $NUCLEO_VERSION" >&2; exit 1 ;; \
+        esac; \
+      fi; \
+      echo "cli version surface: $cli_output"; \
     fi
 
 # Keep pnpm available in the runtime image for container-local workflows.
