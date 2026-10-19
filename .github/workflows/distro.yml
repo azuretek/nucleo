@@ -68,9 +68,9 @@ jobs:
 
   # ★ Test and build run here, on GitHub's hosted runners, like Chela and Cuate: every push to main
   # (the assembled tree, or a tooling change on it) is gated, built into the image, pushed to
-  # ghcr.io and published as a dev pre-release. Pull requests run only the fast checks above.
+  # ghcr.io and published as a dev pre-release. Pull requests run lint and tests, the two checks the
+  # branch ruleset requires; only a push builds and publishes.
   tests:
-    if: github.event_name != 'pull_request'
     needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 330
@@ -109,6 +109,8 @@ jobs:
           retention-days: 14
 
   build:
+    # A pull request runs the checks but never publishes an image.
+    if: github.event_name != 'pull_request'
     needs: [lint, tests]
     runs-on: ubuntu-latest
     timeout-minutes: 120
