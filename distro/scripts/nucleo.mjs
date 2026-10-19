@@ -536,7 +536,7 @@ function verify() {
         // failure. The test that tells the two apart is whether the file in the tree is identical to
         // the pin's version of it: if it is, our change to that file was superseded rather than lost.
         // A missing line is accounted when upstream RELEASE already carries that same line: the
-        // behaviour is present whoever supplied it, which is the whole point of upstream-first. A
+        // feature or fix is present whoever supplied it, which is the whole point of upstream-first. A
         // line that is in neither the tree nor the release is genuinely lost, and that is a failure.
         const pinFile = gitTry(["show", `${MANIFEST.pinnedTag}:${f}`]);
         const alreadyUpstream = pinFile.ok
@@ -551,20 +551,20 @@ function verify() {
     // ★ Line presence cannot decide whether a patch is carried: our added line can be absent because
     // the policy preferred upstream in that hunk, which is upstream-first working as designed. What
     // decides is the BEHAVIOUR, so a patch whose lines did not all land is accepted when it names the
-    // behaviour and its tests, and is a hard failure when it names none. That is the same acceptance
+    // feature or fix and its tests, and is a hard failure when it names none. That is the same acceptance
     // criterion the manifest carries for every patch.
-    const behaviour = Array.isArray(p.tests) && p.tests.length ? p.behaviour : "";
+    const featureOrFix = Array.isArray(p.tests) && p.tests.length ? p.featureOrFix : "";
     if (absent === 0) {
       log(`  ok      ${p.n} ${p.branch} (${mine} carried, ${theirs} left to upstream)`);
       ok++;
-    } else if (behaviour) {
+    } else if (featureOrFix) {
       log(
-        `  partial ${p.n} ${p.branch}: ${absent} added line(s) not in the tree, upstream preferred there; acceptance is the behaviour: ${behaviour}`,
+        `  partial ${p.n} ${p.branch}: ${absent} added line(s) not in the tree, upstream preferred there; acceptance is the feature or fix: ${featureOrFix}`,
       );
       partial++;
     } else {
       log(
-        `  FAIL    ${p.n} ${p.branch}: ${absent} added line(s) absent from a CARRIED patch and it names no behaviour`,
+        `  FAIL    ${p.n} ${p.branch}: ${absent} added line(s) absent from a CARRIED patch and it names no feature or fix`,
       );
       bad++;
     }
