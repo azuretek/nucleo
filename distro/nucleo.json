@@ -188,7 +188,7 @@
       "branch": "fix/distro-not-upstream-source",
       "subject": "the fork tooling tree is not scanned as upstream source",
       "featureOrFix": "the fork tooling tree is not scanned as upstream source",
-      "coveredBy": "check"
+      "coveredBy": "image"
     },
     {
       "n": 15,
@@ -196,7 +196,7 @@
       "branch": "fix/boundary-dts-timeout-knob",
       "subject": "let a slow host raise the boundary dts timeout",
       "featureOrFix": "let a slow host raise the boundary dts timeout",
-      "coveredBy": "check"
+      "coveredBy": "image"
     },
     {
       "n": 19,
@@ -214,7 +214,7 @@
       "branch": "fix/typecheck-core-pin",
       "subject": "type the WAL timer stub and the Vitest project cache hook",
       "featureOrFix": "type the WAL timer stub and the Vitest project cache hook",
-      "coveredBy": "check"
+      "coveredBy": "image"
     },
     {
       "n": 25,
