@@ -24,7 +24,14 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: cache node_modules
+        id: node-modules
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
 
   lint:
     needs: setup
@@ -35,7 +42,14 @@ jobs:
         with:
           node-version: 24
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
-      - run: pnpm install --frozen-lockfile
+      - name: cache node_modules
+        id: node-modules
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - name: lint
         run: node distro/scripts/nucleo.mjs gate lint
       - name: only the checks we chose
@@ -89,7 +103,14 @@ jobs:
           path: ${{ github.workspace }}/../.cache/nucleo/node-compile
           key: node-compile-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: node-compile-${{ hashFiles('pnpm-lock.yaml') }}-
-      - run: pnpm install --frozen-lockfile
+      - name: cache node_modules
+        id: node-modules
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: node_modules
+          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - name: gate (lint, then each carried patch's own tests)
         run: node distro/scripts/nucleo.mjs gate
       - name: keep the logs
