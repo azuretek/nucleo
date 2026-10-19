@@ -128,7 +128,7 @@ describe("update-startup with GitHub releases as the update source", () => {
       expect.anything(),
     );
     expect(log.info).toHaveBeenCalledWith(
-      "update available (latest): v0.0.1-dev.104 (current v0.0.1-dev.103). Release: https://github.com/azuretek/nucleo/releases/tag/v0.0.1-dev.104.cccccccccc",
+      "update available (dev): v0.0.1-dev.104 (current v0.0.1-dev.103). Release: https://github.com/azuretek/nucleo/releases/tag/v0.0.1-dev.104.cccccccccc",
     );
     const notices = log.info.mock.calls.map((call) => String(call[0]));
     expect(notices.some((line) => line.includes("2026.10.4"))).toBe(false);
@@ -159,7 +159,7 @@ describe("update-startup with GitHub releases as the update source", () => {
     expect(runAutoUpdate).not.toHaveBeenCalled();
     expect(log.info).toHaveBeenCalledWith(
       "auto-update skipped: updates are releases of azuretek/nucleo",
-      { version: "0.0.1-dev.104", tag: "latest" },
+      { version: "0.0.1-dev.104", tag: "dev" },
     );
   });
 });
