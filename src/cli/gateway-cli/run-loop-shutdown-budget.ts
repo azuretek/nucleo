@@ -13,6 +13,14 @@ import type { GatewayRunSignalAction } from "./run-loop-request.js";
 type NativeStopTimeout = { timeoutMs: number; source: string };
 
 /**
+ * A stop ends this process for good, so its drain is a cleanup ceiling rather
+ * than time to spend. In-flight work is cancelled before the wait begins, and
+ * the pending user turn stays durable across an abort, so a short ceiling costs
+ * no input. The supervisor's own deadline remains the outer failsafe.
+ */
+export const GATEWAY_STOP_DRAIN_HARD_LIMIT_MS = 30_000;
+
+/**
  * Ask whichever supervisor actually enforces the deadline on this platform.
  *
  * Three independent answers. `stop` is a deadline that may be spent as a native
@@ -171,7 +179,10 @@ export function resolveGatewayShutdownDrainBudget(params: {
         : Math.max(0, (restartDrainDeadlineAt ?? Date.now()) - Date.now()),
     drainTimeoutMs: isRestart
       ? restartDrainTimeoutMs
-      : Math.max(0, budget.timeoutMs - budget.reserveMs),
+      : Math.min(
+          GATEWAY_STOP_DRAIN_HARD_LIMIT_MS,
+          Math.max(0, budget.timeoutMs - budget.reserveMs),
+        ),
     // A supervisor SIGTERM owns the stop deadline. Its shorter drain request
     // must not discard time still available for checkpointing and native close.
     forceExitMs:
