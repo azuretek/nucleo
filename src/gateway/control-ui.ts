@@ -28,6 +28,7 @@ import {
   resolvePlaybackTranscode,
 } from "../media/playback-transcode.js";
 import { extractOriginalFilename } from "../media/store.js";
+import { formatProductVersion } from "../nucleo-version.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
 import { resolveAvatarMime } from "../shared/avatar-policy.js";
 import { escapeHtml } from "../shared/html-escape.js";
@@ -936,6 +937,7 @@ export async function handleControlUiHttpRequest(
       assistantAvatarReason: avatarMeta.avatarReason,
       ...(assistantAgentId ? { assistantAgentId } : {}),
       serverVersion: resolveRuntimeServiceVersion(process.env),
+      productVersion: formatProductVersion(resolveRuntimeServiceVersion(process.env)),
       serverBuildId:
         config?.gateway?.controlUi?.root === undefined
           ? (resolveRuntimeServiceBuildId() ?? undefined)

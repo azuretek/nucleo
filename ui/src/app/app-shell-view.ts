@@ -253,7 +253,11 @@ export function renderApplicationShell(host: ShellViewHost) {
       sidebarLiveActivity: uiSettings.sidebarLiveActivity !== false,
       pinnedAgentIds: navigationSnapshot.pinnedAgentIds,
       themeMode: context.theme.mode,
-      gatewayVersion: config.serverVersion ?? gatewaySnapshot.hello?.server?.version ?? null,
+      gatewayVersion:
+        config.productVersion ??
+        config.serverVersion ??
+        gatewaySnapshot.hello?.server?.version ??
+        null,
       devGitBranch: config.devGitBranch,
       watchUpdateProgress,
       onOpenPalette: host.openPalette,
