@@ -41,9 +41,18 @@ test("sync accepts a patch authored on the pin without an off-pin diagnostic", (
       pinOwnedFiles: [],
     };
     writeFileSync(path.join(tooling, "nucleo.json"), JSON.stringify(manifest));
+    // Fixture host paths must win over the outer GitHub runner workspace.
+    writeFileSync(
+      path.join(tooling, "nucleo.local.json"),
+      JSON.stringify({
+        checkout,
+        logs: manifest.logs,
+      }),
+    );
     const result = spawnSync(process.execPath, [path.join(tooling, "scripts/nucleo.mjs"), "sync"], {
       encoding: "utf8",
       timeout: 30_000,
+      env: { ...process.env, GITHUB_ACTIONS: "true", GITHUB_WORKSPACE: tooling, RUNNER_TEMP: root },
     });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.match(result.stdout, /authored_off_pin=0 of 1/);
