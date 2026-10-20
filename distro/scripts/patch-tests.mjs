@@ -39,108 +39,39 @@ if (!existsSync(checkout)) {
 const patches = manifest.patches.filter((p) => (only ? p.n === only : true));
 let held = 0;
 const missing = [];
-const work = [];
+const files = new Set();
 for (const p of patches) {
-  // The step definition names the patches it covers, so a patch never has to know about the
-  // build. A patch with no test file of its own is satisfied only when a declared step covers it.
   const coveringStep = (manifest.buildSteps || []).find(
     (step) => Array.isArray(step.covers) && step.covers.includes(p.branch),
   );
   if (!(p.tests || []).length && coveringStep) {
     held += 1;
-    console.log(
-      String(p.n).padStart(2) +
-        " " +
-        p.branch.padEnd(46) +
-        " GATE  covered by the " +
-        coveringStep.name +
-        " step",
-    );
+    console.log(p.branch + " GATE covered by " + coveringStep.name);
     continue;
   }
-  const files = (p.tests || []).filter((f) => existsSync(checkout + "/" + f));
-  if (!files.length) {
-    console.log(
-      String(p.n).padStart(2) +
-        " " +
-        p.branch.padEnd(46) +
-        " SKIP  none of its tests exist in this tree",
-    );
-    missing.push(p.branch + " (tests absent)");
+  const absent = (p.tests || []).filter((f) => !existsSync(join(checkout, f)));
+  if (!(p.tests || []).length || absent.length) {
+    missing.push(p.branch + " (tests absent: " + absent.join(", ") + ")");
     continue;
   }
-  work.push({ patch: p, files });
+  for (const file of p.tests) files.add(file);
 }
-
-// ★ One vitest process for every patch, not one per patch. Sixteen invocations paid the whole
-// module-graph transform sixteen times, which dominated this step. vitest already runs files in
-// its own pool, so a green run is a single spawn; only a red run falls back to per-patch runs,
-// and only so the failing patch prints its own assertion.
-const allFiles = [...new Set(work.flatMap((w) => w.files))];
-const PER_PATCH_MS = 10 * 60 * 1000;
-const TOTAL_MS = 10 * 60 * 1000;
-const runFiles = (files, timeoutMs) =>
-  spawnSync("pnpm", ["exec", "vitest", "run", ...files], {
+// Share one module graph and stream output rather than buffering a gigabyte.
+// A failed combined run stays failed: rerunning subsets must not hide a failure.
+if (files.size) {
+  const started = Date.now();
+  const r = spawnSync("pnpm", ["exec", "vitest", "run", ...files], {
     cwd: checkout,
-    encoding: "utf8",
-    maxBuffer: 1 << 30,
-    timeout: timeoutMs,
+    env: { ...process.env, OPENCLAW_VITEST_MAX_WORKERS: "2" },
+    stdio: "inherit",
+    timeout: 10 * 60 * 1000,
     killSignal: "SIGTERM",
   });
-
-if (work.length) {
-  const started = Date.now();
-  const combined = runFiles(allFiles, TOTAL_MS);
-  const seconds = Math.round((Date.now() - started) / 1000);
-  console.log(
-    "   one vitest run over " +
-      allFiles.length +
-      " files for " +
-      work.length +
-      " patches: rc=" +
-      combined.status +
-      " in " +
-      seconds +
-      "s",
-  );
-  if (combined.status === 0) {
-    held += work.length;
-    for (const w of work) {
-      console.log(
-        String(w.patch.n).padStart(2) +
-          " " +
-          w.patch.branch.padEnd(46) +
-          " HELD  " +
-          w.patch.featureOrFix.slice(0, 58),
-      );
-    }
-  } else {
-    // Attribute the failure. Only reached when something is already red, so the extra spawns
-    // cost nothing on the happy path.
-    for (const w of work) {
-      const r = runFiles(w.files, PER_PATCH_MS);
-      const timedOut = r.signal === "SIGTERM" || /ETIMEDOUT/.test(String(r.error && r.error.code));
-      const ok = r.status === 0;
-      if (ok) held += 1;
-      else missing.push(w.patch.branch);
-      const mark = ok ? " HELD " : timedOut ? " TIME " : " FAIL ";
-      console.log(
-        String(w.patch.n).padStart(2) +
-          " " +
-          w.patch.branch.padEnd(46) +
-          mark +
-          " " +
-          w.patch.featureOrFix.slice(0, 58),
-      );
-      if (!ok) console.log(String((r.stdout || "") + (r.stderr || "")).slice(-6000));
-      if (timedOut)
-        console.log(
-          "     timed out after " +
-            Math.round(PER_PATCH_MS / 60000) +
-            " minutes; a bounded failure is a result, an unbounded one is not",
-        );
-    }
-  }
+  console.log("patch tests: " + files.size + " unique files rc=" + r.status +
+    " signal=" + (r.signal || "none") + " in " + Math.round((Date.now() - started) / 1000) + "s");
+  if (r.error) console.error(r.error.message);
+  if (r.status !== 0) missing.push("combined patch tests");
+  else held = patches.length - missing.length;
 }
 console.log("== patch tests held=" + held + " of " + patches.length + " ==");
 if (missing.length) {
