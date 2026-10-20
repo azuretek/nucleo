@@ -322,6 +322,9 @@ function main() {
   try {
     mkdirSync(LOG_DIR, { recursive: true });
     git(FETCH_MAIN);
+    // Coverage is about main, but the inputs check below reads every patch
+    // branch, so their remote-tracking refs have to be current too.
+    git(["fetch", "--quiet", MANIFEST.fork.remote]);
     const head = (
       git(["rev-parse", "refs/remotes/" + MANIFEST.fork.remote + "/" + MANIFEST.distroBranch])
         .stdout || ""
@@ -337,6 +340,18 @@ function main() {
       process.exitCode = 1;
       return;
     }
+    // ★ A green run covers the COMMIT, not the inputs. A patch branch can advance
+    // while main still points at the tree that run built, and measured on
+    // 2026-10-19 the driver kept saying "nothing to do" for a carried fix that had
+    // never been assembled. A missing record counts as changed, because assembling
+    // is the safe direction.
+    let inputsUnchanged = false;
+    const status = run("node", [PIPELINE, "status", "--json"], { cwd: REPO, timeout: 60000 });
+    try {
+      inputsUnchanged = JSON.parse((status.stdout || "").trim()).inputsUnchanged === true;
+    } catch {
+      inputsUnchanged = false;
+    }
     const newer = newestUpstreamPin();
     say(
       "distro " +
@@ -349,7 +364,7 @@ function main() {
       say("GitHub is building it: " + cov.url + "; nothing to do");
       return;
     }
-    if (cov.state === "green") {
+    if (cov.state === "green" && inputsUnchanged) {
       say("covered by a green build: " + cov.url + "; nothing to do");
       event("chain COVERED " + head);
       if (newer && newer !== MANIFEST.pinnedTag)
@@ -364,11 +379,19 @@ function main() {
       );
       return;
     }
-    say(
-      "not covered by a green build" +
-        (cov.state === "red" ? " (its run failed: " + cov.url + ")" : "") +
-        ": running the chain",
-    );
+    if (cov.state === "green") {
+      say(
+        "the green run for " +
+          head.slice(0, 12) +
+          " predates the current patch inputs: running the chain for a new candidate",
+      );
+    } else {
+      say(
+        "not covered by a green build" +
+          (cov.state === "red" ? " (its run failed: " + cov.url + ")" : "") +
+          ": running the chain",
+      );
+    }
     if (!APPLY) {
       for (const [where, args] of STEPS) say("  would run " + where + ": " + args.join(" "));
       say("dry run: pass --apply to run it");

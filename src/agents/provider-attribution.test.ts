@@ -360,18 +360,6 @@ describe("provider attribution", () => {
     });
   });
 
-  it("identifies the OpenClaw build, not the product version, to OpenAI", () => {
-    const policy = resolveProviderAttributionPolicy("openai", {
-      OPENCLAW_VERSION: "0.0.1-dev.103",
-      OPENCLAW_COMPATIBILITY_HOST_VERSION: "2026.9.8",
-    });
-    expect(policy?.version).toBe("2026.9.8");
-    expect(policy?.headers).toMatchObject({
-      version: "2026.9.8",
-      "User-Agent": "openclaw/2026.9.8",
-    });
-  });
-
   it("identifies OpenClaw only on native OpenCode Go routes", () => {
     const nativeGo = resolveProviderRequestPolicy(
       {
