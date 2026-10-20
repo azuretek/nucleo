@@ -278,6 +278,20 @@
         "src/infra/update-github-releases.test.ts",
         "src/infra/update-startup.github-releases.test.ts"
       ]
+    },
+    {
+      "n": 30,
+      "pr": null,
+      "branch": "nucleo/claude-subscription-keeper",
+      "subject": "opt-in Claude CLI subscription credential keeper",
+      "featureOrFix": "an explicitly enabled Linux keeper lets Claude CLI exclusively refresh subscription credentials and synchronizes access-only material through a revocable provider-bound Gateway service capability, with single-flight, backoff, quota-aware health and no paid fallback",
+      "tests": [
+        "extensions/anthropic/subscription-keeper.test.ts",
+        "extensions/anthropic/subscription-keeper-linux.test.ts",
+        "src/plugins/services.token-import.test.ts",
+        "src/plugins/services.token-import.integration.test.ts",
+        "src/gateway/model-auth-refresh.subscription.test.ts"
+      ]
     }
   ],
   "version": "0.0.1",
