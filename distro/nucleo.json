@@ -32,6 +32,16 @@
   ],
   "patches": [
     {
+      "n": 30,
+      "pr": null,
+      "branch": "nucleo/product-build-metadata",
+      "subject": "persist the separate product version in image build metadata",
+      "featureOrFix": "env-free images retain the product version without changing upstream compatibility",
+      "tests": [
+        "test/scripts/write-build-info.test.ts"
+      ]
+    },
+    {
       "n": 2,
       "pr": 163964,
       "branch": "fix/image-draft-snapshot",
