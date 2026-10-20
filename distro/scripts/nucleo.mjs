@@ -230,7 +230,7 @@ function sync() {
       failed++;
       continue;
     }
-    if (gitTry(["merge-base", "--is-ancestor", base.out, MANIFEST.pinnedTag]).status !== 0) {
+    if (!gitTry(["merge-base", "--is-ancestor", base.out, MANIFEST.pinnedTag]).ok) {
       offPin++;
       appendFileSync(file, "authored-off-pin " + p.branch + "\n");
     }
@@ -268,7 +268,18 @@ function sync() {
           appendFileSync(file, "upstream-already-has-it " + p.branch + " " + c.slice(0, 12) + "\n");
           continue;
         }
-        appendFileSync(file, "FAILED-non-content " + p.branch + " " + c.slice(0, 12) + "\n");
+        appendFileSync(
+          file,
+          "FAILED-non-content " +
+            p.branch +
+            " " +
+            c.slice(0, 12) +
+            "\n" +
+            picked.out +
+            "\n" +
+            picked.err +
+            "\n",
+        );
         gitTry(["cherry-pick", "--abort"]);
         failed++;
         break;
