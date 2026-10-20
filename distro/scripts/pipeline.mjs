@@ -136,6 +136,27 @@ function status() {
   );
 }
 
+// Machine-readable form for the driver. A green run covers the COMMIT, not the
+// inputs: a patch branch can advance while the distro branch still points at the
+// tree that run built, so the driver has to ask this before calling it done.
+function statusJson() {
+  const now = inputs();
+  const last = latest();
+  const inputsUnchanged = Boolean(
+    last?.record.inputs &&
+    last.record.inputs.patches === now.patches &&
+    last.record.inputs.pin === now.pin,
+  );
+  console.log(
+    JSON.stringify({
+      pin: now.pin,
+      distro: now.distro,
+      lastRun: last?.record.id ?? null,
+      inputsUnchanged,
+    }),
+  );
+}
+
 function pipeline() {
   let stages = STAGES;
   const only = (val("--only") ?? "").split(",").filter(Boolean);
@@ -226,8 +247,10 @@ function pipeline() {
 }
 
 if (CMD === "run") pipeline();
-else if (CMD === "status") status();
-else {
+else if (CMD === "status") {
+  if (has("--json")) statusJson();
+  else status();
+} else {
   console.error(
     "usage: pipeline.mjs run [--from s] [--only a,b] [--dry-run] [--reuse] [--assembly <prefix>] | status",
   );

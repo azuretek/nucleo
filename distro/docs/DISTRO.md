@@ -27,11 +27,13 @@ node scripts/nucleo.mjs status               # where the pin, the branch and the
 
 `pin-and-build.mjs` decides when the chain runs and on which host. The stages belong to `pipeline.mjs`, which writes one run record per run naming the pin, the distro commit and every patch tip; read the record before believing a summary.
 
-1. **Assembly host**, the authoritative checkout: `pipeline.mjs run --only assemble,verify`. `assemble` rebuilds the distro branch as the pin plus the patch series plus the paths the fork owns. `verify` is the acceptance gate: a patch that leaves lines behind passes only when the manifest names its behaviour and the tests that prove it.
+1. **Assembly host**, the authoritative checkout: `pipeline.mjs run --only assemble,verify`. `assemble` rebuilds the distro branch as the pin plus the patch series plus the paths the fork owns. `verify` is the acceptance gate: a patch that leaves lines behind passes only when the manifest names its feature or fix and the tests that prove it.
 2. **Handoff**: the driver first archives the remote tip it is about to replace as `archive/main-<sha>` and reads it back, so every handoff has a way back. Then `pipeline.mjs run --only handoff` pushes with `--force-with-lease`, inside the workflow guard described below.
 3. **GitHub**: the push starts `distro.yml`, which runs the gate, builds the image and publishes the dev pre-release (see [Continuous integration](#continuous-integration)). The driver waits for that run to appear and names it, and its part ends there.
 
 **It runs only when the distro branch is not covered.** Covered means GitHub has a successful `distro.yml` push run for exactly that commit. A run still in progress counts as in hand, so the driver never hands off over a build. A failed run is not covered: assembling again cuts a new commit, and its push is the retry.
+
+**Covered also means the inputs have not moved.** A green run covers the commit it built, not the patch branches, so a patch branch that advances would otherwise wait forever behind a commit GitHub already built. The driver asks `pipeline.mjs status --json` for `inputsUnchanged` and assembles a new candidate when the patch tips differ from the last run record; a missing record counts as changed.
 
 **One run at a time.** A lock refuses a second run, because two long git operations in one worktree corrupt the index. A lock whose holder is dead is cleared at once.
 
@@ -107,4 +109,4 @@ The consequence for the code: the shallow-clone refusal guards the operations th
 
 ## Continuous integration
 
-Test and build run on GitHub's hosted runners, like Chela and Cuate. `distro.yml` runs the fast checks on every pull request. On every push to `main` it also runs the gate (`check`, then each carried patch's own tests), builds the image with buildx and pushes it to `ghcr.io/azuretek/nucleo-gateway`, and publishes the dev pre-release `v<version>-dev.<build>.<sha>`. Only the newest ten dev pre-releases and images are kept. Docker layers, the pnpm store and the Node compile cache are reused between runs through GitHub's cache. Assembly still runs on the assembly host and hands off by pushing `main`, which starts the build.
+Test and build run on GitHub's hosted runners, like Chela and Cuate. `distro.yml` runs `lint` and `tests` on every pull request, the two checks the branch ruleset requires. Every push to `main` runs the same gate and then builds the image with buildx and pushes it to `ghcr.io/azuretek/nucleo-gateway`, and publishes the dev pre-release `v<version>-dev.<build>.<sha>`. Only the newest ten dev pre-releases and images are kept. Docker layers, the pnpm store and the Node compile cache are reused between runs through GitHub's cache. Assembly still runs on the assembly host and hands off by pushing `main`, which starts the build.
