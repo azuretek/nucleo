@@ -67,8 +67,17 @@ if (files.size) {
     timeout: 10 * 60 * 1000,
     killSignal: "SIGTERM",
   });
-  console.log("patch tests: " + files.size + " unique files rc=" + r.status +
-    " signal=" + (r.signal || "none") + " in " + Math.round((Date.now() - started) / 1000) + "s");
+  console.log(
+    "patch tests: " +
+      files.size +
+      " unique files rc=" +
+      r.status +
+      " signal=" +
+      (r.signal || "none") +
+      " in " +
+      Math.round((Date.now() - started) / 1000) +
+      "s",
+  );
   if (r.error) console.error(r.error.message);
   if (r.status !== 0) missing.push("combined patch tests");
   else held = patches.length - missing.length;

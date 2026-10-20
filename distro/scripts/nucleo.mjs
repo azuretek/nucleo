@@ -700,7 +700,11 @@ function gate() {
     }
     // A green step can still print warnings for GitHub into its log, which GitHub never sees.
     if (ci) for (const line of workflowCommands(readFileSync(stepFile, "utf8"))) log(line);
-    log(`  ${step} ok`);
+    log(`  ${step} ok in ${seconds}s`);
+    if (step === "lint") {
+      for (const line of readFileSync(stepFile, "utf8").split("\n"))
+        if (/^\[oxlint/.test(line)) log(line);
+    }
   }
   appendFileSync(file, `\n@@@ ${green ? "GREEN" : "RED"} ${head}\n`);
   event("gate " + (green ? "GREEN" : "RED") + " " + head);
