@@ -18,7 +18,7 @@ function fixture(t, { absent = false, fail = false, only } = {}) {
     { n: 2, branch: "two", tests: ["present.test.ts"] },
   ] }));
   writeFileSync(join(root, "bin", "pnpm"), "#!/usr/bin/env node\n" +
-    "require('node:fs').appendFileSync(process.env.CALLS, JSON.stringify({args: process.argv.slice(2), workers: process.env.OPENCLAW_VITEST_MAX_WORKERS})+'\n'); process.exit(Number(process.env.FAIL));\n", { mode: 0o755 });
+    "require('node:fs').appendFileSync(process.env.CALLS, JSON.stringify({args: process.argv.slice(2), workers: process.env.OPENCLAW_VITEST_MAX_WORKERS})+'\\n'); process.exit(Number(process.env.FAIL));\n", { mode: 0o755 });
   const calls = join(root, "calls");
   const r = spawnSync(process.execPath, [script, root, ...(only ? [String(only)] : [])], {
     encoding: "utf8", env: { ...process.env, NUCLEO_MANIFEST: manifest,
