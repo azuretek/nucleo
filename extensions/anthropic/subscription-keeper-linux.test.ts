@@ -1,13 +1,54 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { withTempDir } from "openclaw/plugin-sdk/test-env";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   CLAUDE_KEEPER_ARGS,
   claudeKeeperEnvironment,
   classifyClaudeKeeperRefusal,
   createLinuxClaudeKeeperAdapter,
+  runClaudeKeeperCli,
 } from "./subscription-keeper-linux.js";
+
+it("executes the CLI with isolated settings and no inherited paid credentials", async () => {
+  await withTempDir("claude-keeper-child-", async (home) => {
+    const executable = path.join(home, "claude");
+    const receipt = path.join(home, "receipt.json");
+    await fs.writeFile(
+      executable,
+      [
+        "#!" + process.execPath,
+        'const fs = require("node:fs");',
+        'fs.writeFileSync(process.env.HOME + "/receipt.json", JSON.stringify({args: process.argv.slice(2), env: process.env, cwd: process.cwd()}));',
+        'process.stdout.write("Weekly usage limit reached");',
+      ].join("\n"),
+      { mode: 0o700 },
+    );
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("PATH", home);
+    vi.stubEnv("ANTHROPIC_API_KEY", "synthetic-paid-key");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "synthetic-paid-token");
+    vi.stubEnv("CLAUDE_CONFIG_DIR", "/synthetic-untrusted-config");
+    try {
+      expect(await runClaudeKeeperCli(new AbortController().signal)).toBe(
+        "Weekly usage limit reached",
+      );
+      const observed = JSON.parse(await fs.readFile(receipt, "utf8")) as {
+        args: string[];
+        env: Record<string, string>;
+        cwd: string;
+      };
+      expect(observed.args).toEqual(CLAUDE_KEEPER_ARGS);
+      expect(observed.env.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(observed.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+      expect(observed.env.CLAUDE_CONFIG_DIR).toBeUndefined();
+      expect(observed.env.HOME).toBe(home);
+      expect(observed.cwd).not.toBe(process.cwd());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
 
 const now = 1_800_000_000_000;
 async function fixture(home: string) {
