@@ -4,8 +4,8 @@ The gate runs two steps in order, and the image build follows a green gate. Upst
 
 | step    | what it covers                                                                                                                                                                                                                                    |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `lint`  | distro lint scoped to changed source paths                                                                                                                                                                                                        |
-| `tests` | each carried patch's own tests, the ones its upstream PR adds or changes, listed as `tests` in `nucleo.json`. Distro `*.test.mjs` files use Node's test runner; upstream tests use Vitest. Build-only patches are listed in `buildSteps[].covers` |
+| `lint`  | The pinned lint script, including type-aware lint and package-boundary preparation, scoped to changed source paths as in upstream CI.                                                                                                              |
+| `tests` | each carried patch's own tests, the ones its upstream PR adds or changes, listed as `tests` in `nucleo.json`. Distro `*.test.mjs` files use Node's test runner; upstream tests use Vitest. A patch with no tests of its own names the step that exercises it in `buildSteps[].covers` |
 
 The image build is the one compile of the tree. A compile error stops the chain there, before anything is published.
 
@@ -23,4 +23,5 @@ The image build is the one compile of the tree. A compile error stops the chain 
 
 - **Never edit, skip or weaken an upstream test, and never raise a time limit, to get a green.** A red is a result: find what is slow or broken and fix that.
 - **The type-aware lint pass is memory hungry.** One worker was seen holding 5.3 GB resident on a guest with 6 GB. Give the host headroom, and keep the gate and an image build off the same host at the same time.
+- **Read the executable owners.** The manifest names `lint` and `tests`; `package.json` owns the lint command. The upstream aggregate `check` is not a distro gate.
 - **A coverage label is not a test.** A named image build covers Dockerfile changes, not script behavior or source trees excluded from production compilation.

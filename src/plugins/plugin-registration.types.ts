@@ -368,6 +368,8 @@ export type OpenClawPluginServiceHealth = {
 };
 
 export type OpenClawPluginServiceContext = {
+  /** V1: imports access material into this service's declared token-only target. */
+  importAuthTokenV1?: (credential: { token: string; expires: number }) => Promise<void>;
   config: OpenClawConfig;
   workspaceDir?: string;
   stateDir: string;
@@ -423,6 +425,8 @@ export type OpenClawPluginServiceContext = {
 /** Background service registered by a plugin during `register(api)`. */
 export type OpenClawPluginService = {
   id: string;
+  /** Explicit provider-owned target, requiring token configuration and exclusive auth order. */
+  authTokenImportV1?: { provider: string; profileId: string };
   /** Restart this service with committed config when one of these paths changes. */
   reload?: { configPrefixes: readonly string[] };
   start: (ctx: OpenClawPluginServiceContext) => void | Promise<void>;
