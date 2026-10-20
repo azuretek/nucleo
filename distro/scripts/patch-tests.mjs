@@ -39,62 +39,48 @@ if (!existsSync(checkout)) {
 const patches = manifest.patches.filter((p) => (only ? p.n === only : true));
 let held = 0;
 const missing = [];
+const files = new Set();
 for (const p of patches) {
-  // The step definition names the patches it covers, so a patch never has to know about the
-  // build. A patch with no test file of its own is satisfied only when a declared step covers it.
   const coveringStep = (manifest.buildSteps || []).find(
     (step) => Array.isArray(step.covers) && step.covers.includes(p.branch),
   );
   if (!(p.tests || []).length && coveringStep) {
     held += 1;
-    console.log(
-      String(p.n).padStart(2) +
-        " " +
-        p.branch.padEnd(46) +
-        " GATE  covered by the " +
-        coveringStep.name +
-        " step",
-    );
+    console.log(p.branch + " GATE covered by " + coveringStep.name);
     continue;
   }
-  const files = (p.tests || []).filter((f) => existsSync(checkout + "/" + f));
-  if (!files.length) {
-    console.log(
-      String(p.n).padStart(2) +
-        " " +
-        p.branch.padEnd(46) +
-        " SKIP  none of its tests exist in this tree",
-    );
-    missing.push(p.branch + " (tests absent)");
+  const absent = (p.tests || []).filter((f) => !existsSync(join(checkout, f)));
+  if (!(p.tests || []).length || absent.length) {
+    missing.push(p.branch + " (tests absent: " + absent.join(", ") + ")");
     continue;
   }
-  // ★ Bounded per patch. An unbounded wait means one hung integration test stalls the whole
-  // suite silently, which is indistinguishable from "still working" and wastes the run.
-  const PER_PATCH_MS = 10 * 60 * 1000;
+  for (const file of p.tests) files.add(file);
+}
+// Share one module graph and stream output rather than buffering a gigabyte.
+// A failed combined run stays failed: rerunning subsets must not hide a failure.
+if (files.size) {
+  const started = Date.now();
   const r = spawnSync("pnpm", ["exec", "vitest", "run", ...files], {
     cwd: checkout,
-    encoding: "utf8",
-    maxBuffer: 1 << 30,
-    timeout: PER_PATCH_MS,
+    env: { ...process.env, OPENCLAW_VITEST_MAX_WORKERS: "2" },
+    stdio: "inherit",
+    timeout: 10 * 60 * 1000,
     killSignal: "SIGTERM",
   });
-  const timedOut = r.signal === "SIGTERM" || /ETIMEDOUT/.test(String(r.error && r.error.code));
-  const ok = r.status === 0;
-  if (ok) held += 1;
-  else missing.push(p.branch);
-  const mark = ok ? " HELD " : timedOut ? " TIME " : " FAIL ";
   console.log(
-    String(p.n).padStart(2) + " " + p.branch.padEnd(46) + mark + " " + p.featureOrFix.slice(0, 58),
+    "patch tests: " +
+      files.size +
+      " unique files rc=" +
+      r.status +
+      " signal=" +
+      (r.signal || "none") +
+      " in " +
+      Math.round((Date.now() - started) / 1000) +
+      "s",
   );
-  // A red patch prints its own test output, so the gate log shows the failing assertion
-  // rather than a bare FAIL that has to be reproduced by hand.
-  if (!ok) console.log(String((r.stdout || "") + (r.stderr || "")).slice(-6000));
-  if (timedOut)
-    console.log(
-      "     timed out after " +
-        Math.round(PER_PATCH_MS / 60000) +
-        " minutes; a bounded failure is a result, an unbounded one is not",
-    );
+  if (r.error) console.error(r.error.message);
+  if (r.status !== 0) missing.push("combined patch tests");
+  else held = patches.length - missing.length;
 }
 console.log("== patch tests held=" + held + " of " + patches.length + " ==");
 if (missing.length) {
