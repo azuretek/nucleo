@@ -132,6 +132,8 @@ RUN sh scripts/docker/verify-native-addons.sh
 ARG GIT_COMMIT=""
 ARG OPENCLAW_BUILD_TIMESTAMP=""
 ARG OPENCLAW_DOCKER_BUILD_VERSION=""
+ARG NUCLEO_VERSION=""
+ENV NUCLEO_VERSION=${NUCLEO_VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT} \
     OPENCLAW_BUILD_TIMESTAMP=${OPENCLAW_BUILD_TIMESTAMP}
 
@@ -300,10 +302,14 @@ RUN --mount=from=dependency-inputs,source=/app/scripts/docker/verify-fs-safe-nat
 
 # Validate the three version surfaces in every release-built runtime variant.
 ARG OPENCLAW_DOCKER_BUILD_VERSION
+ARG NUCLEO_VERSION=""
 RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
       test "$(node -p "require(\"/app/package.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
       test "$(node -p "require(\"/app/dist/build-info.json\").version")" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
       test "$(node /app/openclaw.mjs --version | cut -d ' ' -f 2)" = "$OPENCLAW_DOCKER_BUILD_VERSION"; \
+      if [ -n "$NUCLEO_VERSION" ]; then \
+        test "$(node -p "require(\"/app/dist/build-info.json\").nucleoVersion")" = "$NUCLEO_VERSION"; \
+      fi; \
     fi
 
 # Keep pnpm available in the runtime image for container-local workflows.
