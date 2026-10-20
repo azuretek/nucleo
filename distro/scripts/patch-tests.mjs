@@ -23,7 +23,11 @@ function findManifest(checkoutArg) {
     checkoutArg ? join(checkoutArg, "nucleo.json") : null,
     process.cwd() + "/nucleo.json",
   ].filter(Boolean);
-  for (const c of candidates) if (existsSync(c)) return c;
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      return c;
+    }
+  }
   console.error("no nucleo.json found; tried:\n  " + candidates.join("\n  "));
   process.exit(2);
 }
@@ -85,21 +89,27 @@ for (const p of patches) {
   );
   const timedOut = r.signal === "SIGTERM" || /ETIMEDOUT/.test(String(r.error && r.error.code));
   const ok = r.status === 0;
-  if (ok) held += 1;
-  else missing.push(p.branch);
+  if (ok) {
+    held += 1;
+  } else {
+    missing.push(p.branch);
+  }
   const mark = ok ? " HELD " : timedOut ? " TIME " : " FAIL ";
   console.log(
     String(p.n).padStart(2) + " " + p.branch.padEnd(46) + mark + " " + p.featureOrFix.slice(0, 58),
   );
   // A red patch prints its own test output, so the gate log shows the failing assertion
   // rather than a bare FAIL that has to be reproduced by hand.
-  if (!ok) console.log(String((r.stdout || "") + (r.stderr || "")).slice(-6000));
-  if (timedOut)
+  if (!ok) {
+    console.log(String((r.stdout || "") + (r.stderr || "")).slice(-6000));
+  }
+  if (timedOut) {
     console.log(
       "     timed out after " +
         Math.round(PER_PATCH_MS / 60000) +
         " minutes; a bounded failure is a result, an unbounded one is not",
     );
+  }
 }
 console.log("== patch tests held=" + held + " of " + patches.length + " ==");
 if (missing.length) {
