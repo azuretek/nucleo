@@ -92,10 +92,14 @@ describe("OpenClaw shell document title", () => {
       shell.render();
       const sidebar = (
         shell as unknown as {
-          navigationSidebar: HTMLElement & { gatewayVersion: string };
+          navigationSidebar: HTMLElement & {
+            gatewayVersion: string;
+            productVersion: string | null;
+          };
         }
       ).navigationSidebar;
-      expect(sidebar.gatewayVersion).toBe(productVersion ?? "2026.9.8");
+      expect(sidebar.gatewayVersion).toBe("2026.9.8");
+      expect(sidebar.productVersion).toBe(productVersion);
       expect(context.config.current.serverVersion).toBe("2026.9.8");
     },
   );

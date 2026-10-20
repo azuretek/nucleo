@@ -71,8 +71,10 @@ export function formatSidebarBuildSubtitle(info: ControlUiBuildInfo): string | n
 export function formatSettingsBuildLabel(
   info: ControlUiBuildInfo,
   gatewayVersion: string | null,
+  productVersion?: string | null,
 ): string | null {
-  const version = info.version ?? gatewayVersion;
+  // Product display is independent of the bundled OpenClaw compatibility identity.
+  const version = productVersion ?? info.version ?? gatewayVersion;
   const gitIdentity = formatNonReleaseGitIdentity(info);
   if (!gitIdentity) {
     return version;
