@@ -450,3 +450,25 @@ The reporter is revoked when the service stops or its plugin registry generation
 late callback from an old generation cannot overwrite current health. Prefer returning the startup
 promise when the service is not usable until that promise settles; use the reporter only for
 deliberately nonblocking work that owns its own stop path.
+
+## Service-owned token import V1
+
+A provider plugin service can declare `authTokenImportV1: { provider, profileId }`.
+Gateway-hosted service contexts then expose optional
+`importAuthTokenV1({ token, expires })`. This additive V1 contract does not change
+legacy auth-write helpers or existing service types. Hosts without the capability
+must be reported as unsupported, not bypassed through direct database writes.
+
+The target is captured at service creation, not supplied with each import. The
+plugin must own the provider registration. Current config must explicitly bind
+the target to that provider in token mode, with the provider's auth order containing
+only that profile and no provider-level API-key override. Existing API-key or
+OAuth profiles cannot be overwritten.
+Only an unexpired access token is imported; refresh tokens and additional fields
+are refused. Quota and failure bookkeeping remains owned by the auth store.
+
+The host revalidates the service, plugin and Gateway lifetimes and current
+configuration inside the existing auth owner's write transaction, after awaited
+writer admission. A retained capability fails after stop, replacement, revocation,
+or Gateway shutdown. Accepted writes settle through the canonical auth publication
+owner. Callers must still cancel and drain their external CLI work in `stop()`.

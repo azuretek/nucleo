@@ -35,6 +35,7 @@ import { getGatewayContextResolver } from "./runtime/gateway-request-scope.js";
 import { createPluginServiceCronGetter, type PluginServiceCronHost } from "./service-cron.js";
 import { createPluginServiceHealthReporter } from "./service-health.js";
 import { createPluginServiceNodeInvoker } from "./service-nodes.js";
+import { createPluginServiceTokenImporterV1 } from "./service-token-import.js";
 import { encodeStartupTraceSegment } from "./startup-trace-segment.js";
 import type { OpenClawPluginServiceContext } from "./types.js";
 
@@ -507,6 +508,17 @@ async function startPreparedPluginServices({
           isStopping: () => ownedService.owner.closed || ownedService.stopRequested,
         })
       : undefined;
+    const tokenImporter =
+      service.authTokenImportV1 && record
+        ? createPluginServiceTokenImporterV1({
+            target: service.authTokenImportV1,
+            registry,
+            record,
+            lease,
+            stateDir: STATE_DIR,
+            isStopping: () => ownedService.owner.closed || ownedService.stopRequested,
+          })
+        : undefined;
     const isDiagnosticsExporter =
       entry.pluginId === id && (id === "diagnostics-otel" || id === "diagnostics-prometheus");
     const isOtelExporter = isDiagnosticsExporter && entry.id === "diagnostics-otel";
@@ -562,6 +574,7 @@ async function startPreparedPluginServices({
         debug: (msg) => log.debug(msg),
       },
       serviceHealth: health,
+      ...(tokenImporter ? { importAuthTokenV1: tokenImporter } : {}),
       ...(getCron ? { getCron } : {}),
       ...(nodeInvoker
         ? { invokeNode: nodeInvoker.invoke, openNodeDuplex: nodeInvoker.openDuplex }
