@@ -84,6 +84,22 @@ async function createConnectedSessionShell() {
 }
 
 describe("OpenClaw shell document title", () => {
+  it.each(["Núcleo 0.0.1-dev.104 (OpenClaw 2026.9.8)", null])(
+    "projects product display %s into navigation without changing serverVersion",
+    async (productVersion) => {
+      const { shell, context } = await createConnectedSessionShell();
+      Object.assign(context.config.current, { serverVersion: "2026.9.8", productVersion });
+      shell.render();
+      const sidebar = (
+        shell as unknown as {
+          navigationSidebar: HTMLElement & { gatewayVersion: string };
+        }
+      ).navigationSidebar;
+      expect(sidebar.gatewayVersion).toBe(productVersion ?? "2026.9.8");
+      expect(context.config.current.serverVersion).toBe("2026.9.8");
+    },
+  );
+
   function createShell(context?: ApplicationContext): ShellDocumentTitleState {
     const shell = document.createElement(
       "openclaw-app-shell",

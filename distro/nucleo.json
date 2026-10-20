@@ -268,6 +268,18 @@
         "src/infra/update-github-releases.test.ts",
         "src/infra/update-startup.github-releases.test.ts"
       ]
+    },
+    {
+      "n": 31,
+      "pr": null,
+      "branch": "nucleo/control-ui-product-version",
+      "subject": "show the product version in Control UI navigation",
+      "featureOrFix": "Control UI bootstrap retains a separate product display through client normalization and shell navigation without changing the server compatibility version",
+      "tests": [
+        "src/gateway/control-ui-bootstrap-presentation.test.ts",
+        "ui/src/app/config.test.ts",
+        "ui/src/app/app-host.document-title.test.ts"
+      ]
     }
   ],
   "version": "0.0.1",

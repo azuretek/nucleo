@@ -33,6 +33,39 @@ afterEach(() => {
 });
 
 describe("createApplicationConfigCapability", () => {
+  it("retains the product display separately from the compatibility version", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          serverVersion: "2026.9.8",
+          productVersion: "Núcleo 0.0.1-dev.104 (OpenClaw 2026.9.8)",
+        }),
+      ),
+    );
+    const config = createApplicationConfigCapability({ resourceBasePath: "" });
+    await config.refresh();
+    expect(config.current).toMatchObject({
+      serverVersion: "2026.9.8",
+      productVersion: "Núcleo 0.0.1-dev.104 (OpenClaw 2026.9.8)",
+    });
+  });
+
+  it("clears the product display when reconnecting to an older gateway", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          Response.json({ serverVersion: "2026.9.8", productVersion: "Núcleo 0.0.1" }),
+        )
+        .mockResolvedValueOnce(Response.json({ serverVersion: "2026.9.9" })),
+    );
+    const config = createApplicationConfigCapability({ resourceBasePath: "" });
+    await config.refresh();
+    await config.refresh();
+    expect(config.current).toMatchObject({ serverVersion: "2026.9.9", productVersion: null });
+  });
   it("publishes upload policy changes and keeps the default enabled", async () => {
     const fetchMock = vi
       .fn()

@@ -1,9 +1,15 @@
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { formatProductVersion } from "../nucleo-version.js";
+import { resolveRuntimeServiceVersion } from "../version.js";
 import type { ControlUiBootstrapConfig } from "./control-ui-bootstrap-contract.js";
 
 /** Public presentation settings of the Gateway serving the UI, never model permissions. */
-export function resolveControlUiBootstrapPresentation(config: OpenClawConfig | undefined) {
+export function resolveControlUiBootstrapPresentation(
+  config: OpenClawConfig | undefined,
+  serverVersion = resolveRuntimeServiceVersion(),
+) {
   return {
+    productVersion: formatProductVersion(serverVersion),
     embedSandbox:
       config?.gateway?.controlUi?.embedSandbox === "trusted"
         ? "trusted"
