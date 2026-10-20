@@ -16,6 +16,7 @@ import { canReloadControlUiDocument } from "./document-reload-guard.ts";
 type ApplicationConfig = {
   assistantIdentity: ReturnType<typeof normalizeAssistantIdentity>;
   serverVersion: string | null;
+  productVersion?: string | null;
   serverBuildId?: string | null;
   devGitBranch: string | null;
   environment: ControlUiEnvironment | null;
@@ -52,6 +53,7 @@ function readDocumentTerminalEnabled(): boolean | null {
 const DEFAULT_APPLICATION_CONFIG: ApplicationConfig = {
   assistantIdentity: normalizeAssistantIdentity(),
   serverVersion: null,
+  productVersion: null,
   serverBuildId: null,
   devGitBranch: null,
   environment: null,
@@ -100,6 +102,7 @@ function normalizeApplicationConfig(parsed: ControlUiBootstrapConfig): Applicati
       avatarReason: parsed.assistantAvatarReason,
     }),
     serverVersion: parsed.serverVersion ?? null,
+    productVersion: parsed.productVersion?.trim() || null,
     serverBuildId: parsed.serverBuildId ?? null,
     devGitBranch: parsed.devGitBranch?.trim() || null,
     environment: parsed.environment ?? null,
