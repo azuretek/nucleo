@@ -24,7 +24,19 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: cache workspace dependencies
+        id: node-modules
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            node_modules
+            ui/node_modules
+            packages/*/node_modules
+            extensions/*/node_modules
+            examples/*/node_modules
+          key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '**/package.json', '.npmrc', 'patches/**') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
 
   lint:
     needs: setup
@@ -43,7 +55,19 @@ jobs:
         with:
           node-version: 24
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
-      - run: pnpm install --frozen-lockfile
+      - name: cache workspace dependencies
+        id: node-modules
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            node_modules
+            ui/node_modules
+            packages/*/node_modules
+            extensions/*/node_modules
+            examples/*/node_modules
+          key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '**/package.json', '.npmrc', 'patches/**') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - name: lint
         run: node distro/scripts/nucleo.mjs gate lint
       - name: only the checks we chose
@@ -102,7 +126,19 @@ jobs:
           path: ${{ github.workspace }}/../.cache/nucleo/node-compile
           key: node-compile-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
           restore-keys: node-compile-${{ hashFiles('pnpm-lock.yaml') }}-
-      - run: pnpm install --frozen-lockfile
+      - name: cache workspace dependencies
+        id: node-modules
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            node_modules
+            ui/node_modules
+            packages/*/node_modules
+            extensions/*/node_modules
+            examples/*/node_modules
+          key: node-modules-v2-${{ runner.os }}-${{ runner.arch }}-node24-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', '**/package.json', '.npmrc', 'patches/**') }}
+      - if: steps.node-modules.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
       - name: tests
         run: node distro/scripts/nucleo.mjs gate tests
       - name: keep the logs
