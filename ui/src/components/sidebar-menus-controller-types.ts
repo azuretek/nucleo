@@ -31,6 +31,7 @@ export interface SidebarMenusControllerHost extends SessionOrganizerControllerHo
   readonly connectionStatus: GatewayStatus | null;
   readonly enabledRouteIds?: readonly NavigationRouteId[];
   readonly gatewayVersion: string | null;
+  readonly productVersion?: string | null;
   readonly onNavigate?: (
     routeId: NavigationRouteId,
     options?: ApplicationNavigationOptions,

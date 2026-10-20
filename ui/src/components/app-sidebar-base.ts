@@ -53,6 +53,7 @@ export abstract class AppSidebarBase extends OpenClawLightDomContentsElement {
   @property({ attribute: false }) pinnedAgentIds: readonly string[] = [];
   @property({ attribute: false }) themeMode: ThemeMode = "system";
   @property({ attribute: false }) gatewayVersion: string | null = null;
+  @property({ attribute: false }) productVersion: string | null = null;
   @property({ attribute: false }) devGitBranch: string | null = null;
   @property({ attribute: false }) watchUpdateProgress:
     | ((listener: (progress: UpdateProgress) => void) => () => void)
