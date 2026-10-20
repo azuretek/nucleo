@@ -16,6 +16,7 @@ import "./tooltip.ts";
 class SidebarBuildChip extends OpenClawLightDomContentsElement {
   @property({ attribute: false }) basePath = "";
   @property({ attribute: false }) gatewayVersion: string | null = null;
+  @property({ attribute: false }) productVersion: string | null = null;
   @property({ attribute: false }) updateAttentionDismissed = false;
   @property({ attribute: false }) onNavigate?: (routeId: "about") => void;
   @property({ attribute: false }) variant: "compact" | "identity" | "settings" = "compact";
@@ -23,11 +24,15 @@ class SidebarBuildChip extends OpenClawLightDomContentsElement {
   override render() {
     const text =
       this.variant === "settings"
-        ? formatSettingsBuildLabel(CONTROL_UI_BUILD_INFO, this.gatewayVersion)
+        ? formatSettingsBuildLabel(CONTROL_UI_BUILD_INFO, this.gatewayVersion, this.productVersion)
         : this.variant === "identity"
           ? this.updateAttentionDismissed
-            ? formatSettingsBuildLabel(CONTROL_UI_BUILD_INFO, this.gatewayVersion)
-            : formatSidebarBuildSubtitle(CONTROL_UI_BUILD_INFO)
+            ? formatSettingsBuildLabel(
+                CONTROL_UI_BUILD_INFO,
+                this.gatewayVersion,
+                this.productVersion,
+              )
+            : (this.productVersion ?? formatSidebarBuildSubtitle(CONTROL_UI_BUILD_INFO))
           : formatBuildChipText(CONTROL_UI_BUILD_INFO);
     if (!text && !this.updateAttentionDismissed) {
       return nothing;

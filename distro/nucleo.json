@@ -278,7 +278,9 @@
       "tests": [
         "src/gateway/control-ui-bootstrap-presentation.test.ts",
         "ui/src/app/config.test.ts",
-        "ui/src/app/app-host.document-title.test.ts"
+        "ui/src/app/app-host.document-title.test.ts",
+        "ui/src/components/sidebar-build-chip.node.test.ts",
+        "ui/src/components/settings-sidebar.test.ts"
       ]
     }
   ],

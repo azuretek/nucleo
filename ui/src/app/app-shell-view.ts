@@ -253,11 +253,8 @@ export function renderApplicationShell(host: ShellViewHost) {
       sidebarLiveActivity: uiSettings.sidebarLiveActivity !== false,
       pinnedAgentIds: navigationSnapshot.pinnedAgentIds,
       themeMode: context.theme.mode,
-      gatewayVersion:
-        config.productVersion ??
-        config.serverVersion ??
-        gatewaySnapshot.hello?.server?.version ??
-        null,
+      gatewayVersion: config.serverVersion ?? gatewaySnapshot.hello?.server?.version ?? null,
+      productVersion: config.productVersion ?? null,
       devGitBranch: config.devGitBranch,
       watchUpdateProgress,
       onOpenPalette: host.openPalette,
@@ -309,11 +306,8 @@ export function renderApplicationShell(host: ShellViewHost) {
           activeHash: host.routeState.location?.hash ?? "",
           connectionStatus,
           lastError: gatewaySnapshot.lastError,
-          gatewayVersion:
-            config.productVersion ??
-            config.serverVersion ??
-            gatewaySnapshot.hello?.server?.version ??
-            "",
+          gatewayVersion: config.serverVersion ?? gatewaySnapshot.hello?.server?.version ?? "",
+          productVersion: config.productVersion ?? null,
           searchQuery: embedSettingsRoot ? "" : host.settingsSearchQuery,
           searchParams: {
             query: host.settingsSearchQuery,
