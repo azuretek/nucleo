@@ -1037,24 +1037,14 @@ More help: [Troubleshooting](/help/troubleshooting) and [FAQ](/help/faq).
 
 ## Opt-in subscription keeper (Núcleo)
 
-Núcleo can keep a Claude subscription access credential synchronized into a
-Gateway-owned token profile. This is **off by default** and currently supports
-**Linux file credentials only**. Native Claude CLI routing remains unchanged.
-Claude CLI remains the only owner of OAuth refresh grants; the Gateway never
-imports its refresh token or exchanges a grant itself.
+Núcleo can keep a Claude subscription access credential synchronized into a Gateway-owned token profile. This is **off by default** and currently supports **Linux file credentials only**. Native Claude CLI routing remains unchanged. Claude CLI remains the only owner of OAuth refresh grants; the Gateway never imports its refresh token or exchanges a grant itself.
 
 Before enabling:
 
-1. Sign in with `claude auth login` as the Gateway OS user. Install `claude` on
-   that user's PATH and make its normal `~/.claude/.credentials.json` available.
-2. Stop any external credential keeper. The built-in lock coordinates built-in
-   instances sharing the same credential file, not unrelated external scripts.
-3. Configure a dedicated token profile and restrict Anthropic auth order to it.
-   The keeper refuses other credential types, providers, or an order with a paid
-   backup, and rejects provider-level API-key overrides. It does not change your
-   models, fallback list, or provider settings.
-4. Enable the keeper and restart the Anthropic plugin or Gateway when convenient.
-   No deployment or automatic restart is performed by this feature.
+1. Sign in with `claude auth login` as the Gateway OS user. Install `claude` on that user's PATH and make its normal `~/.claude/.credentials.json` available.
+2. Stop any external credential keeper. The built-in lock coordinates built-in instances sharing the same credential file, not unrelated external scripts.
+3. Configure a dedicated token profile and restrict Anthropic auth order to it. The keeper refuses other credential types, providers, or an order with a paid backup, and rejects provider-level API-key overrides. It does not change your models, fallback list, or provider settings.
+4. Enable the keeper and restart the Anthropic plugin or Gateway when convenient. No deployment or automatic restart is performed by this feature.
 
 ```json5
 {
@@ -1074,34 +1064,10 @@ Before enabling:
 }
 ```
 
-The first check runs after service startup, then every 30 minutes. Inside the
-last hour, the adapter runs one bounded, tool-free `claude -p` request. Environment auth overrides and settings
-helpers are excluded. Claude CLI owns refresh and can consume subscription
-allowance for this minimal request. A CLI refusal after refreshing does not
-prevent synchronization: weekly quota exhaustion is not authentication expiry.
-The CLI decides when its credential is stale enough to refresh; the keeper
-never edits its credential file or forces early expiry. Pre-expiry refresh is
-therefore not guaranteed, and a token can expire before the next successful
-check. No API-key or paid fallback is attempted by the keeper.
+The first check runs after service startup, then every 30 minutes. Inside the last hour, the adapter runs one bounded, tool-free `claude -p` request. Environment auth overrides and settings helpers are excluded. Claude CLI owns refresh and can consume subscription allowance for this minimal request. A CLI refusal after refreshing does not prevent synchronization: weekly quota exhaustion is not authentication expiry. The CLI decides when its credential is stale enough to refresh; the keeper never edits its credential file or forces early expiry. Pre-expiry refresh is therefore not guaranteed, and a token can expire before the next successful check. No API-key or paid fallback is attempted by the keeper.
 
-Credential drift from ordinary CLI use is synchronized on the next check even
-when the keeper did not refresh it. Gateway import preserves quota cooldowns and
-publishes the current auth snapshot. Single-flight scheduling and a per-home
-lock prevent overlapping keeper refreshes. Failed refreshes back off from
-30 minutes to six hours. Backoff and the last synchronized credential are
-process-local and reset on plugin restart; credentials remain in their existing
-CLI and Gateway stores. There is no new database or sidecar state store.
+Credential drift from ordinary CLI use is synchronized on the next check even when the keeper did not refresh it. Gateway import preserves quota cooldowns and publishes the current auth snapshot. Single-flight scheduling and a per-home lock prevent overlapping keeper refreshes. Failed refreshes back off from 30 minutes to six hours. Backoff and the last synchronized credential are process-local and reset on plugin restart; credentials remain in their existing CLI and Gateway stores. There is no new database or sidecar state store.
 
-Plugin service health reports missing credentials, unsupported platforms,
-refresh failures, and sync failures using fixed, secret-free messages. Quota
-refusal with a successfully refreshed credential is a debug diagnostic, not an
-auth-health failure. Restore a failed login with `claude auth login`. CLI output
-and credential values never appear in keeper diagnostics.
+Plugin service health reports missing credentials, unsupported platforms, refresh failures, and sync failures using fixed, secret-free messages. Quota refusal with a successfully refreshed credential is a debug diagnostic, not an auth-health failure. Restore a failed login with `claude auth login`. CLI output and credential values never appear in keeper diagnostics.
 
-Disable `subscriptionKeeper.enabled` to stop checks. Service shutdown cancels the
-CLI child and waits for settlement. Only native CLI writes its credential file;
-the keeper cannot overwrite a concurrent native rotation. Disabling does not
-delete either login or the imported token profile.
-Changing the profile target requires a plugin restart to bind a new capability.
-macOS Keychain and Windows credentials are not supported by this version: enabling
-there reports unhealthy without reading or changing their credentials.
+Disable `subscriptionKeeper.enabled` to stop checks. Service shutdown cancels the CLI child and waits for settlement. Only native CLI writes its credential file; the keeper cannot overwrite a concurrent native rotation. Disabling does not delete either login or the imported token profile. Changing the profile target requires a plugin restart to bind a new capability. macOS Keychain and Windows credentials are not supported by this version: enabling there reports unhealthy without reading or changing their credentials.
