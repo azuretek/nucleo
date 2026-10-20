@@ -87,10 +87,10 @@ it("the Anthropic entry point registers one explicitly targeted opt-in service",
     }),
   );
   expect(registerService).toHaveBeenCalledOnce();
-  expect(registerService.mock.calls[0][0].reload.configPrefixes).toContain(
+  expect(registerService.mock.calls[0]![0].reload.configPrefixes).toContain(
     "models.providers.anthropic",
   );
-  expect(registerService.mock.calls[0][0].authTokenImportV1).toEqual({
+  expect(registerService.mock.calls[0]![0].authTokenImportV1).toEqual({
     provider: "anthropic",
     profileId: "anthropic:subscription",
   });

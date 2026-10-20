@@ -191,7 +191,7 @@ it("refuses expired tokens, extra credential types, and paid fallback configurat
   await expect(
     f.importToken({ ...credential(), type: "api_key" } as ReturnType<typeof credential>),
   ).rejects.toThrow("unexpired");
-  f.config.auth!.order!.anthropic.push("anthropic:paid");
+  f.config.auth!.order!.anthropic!.push("anthropic:paid");
   await expect(f.importToken(credential())).rejects.toThrow("exclusive auth order");
   expect(mocks.update).not.toHaveBeenCalled();
 });
