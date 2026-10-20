@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Confirms whether upstream's own fix satisfies OUR expectations: for each patch it puts OUR
-// version of that behaviour's tests onto the PINNED code and runs them.
+// version of that feature or fix's tests onto the PINNED code and runs them.
 //
-// ★ Why this and not the reverse: the behaviour suite used the tests already in the tree, which
+// ★ Why this and not the reverse: the feature or fix suite used the tests already in the tree, which
 // were written for upstream's implementation. A test we wrote, run against their code, is the only
 // thing that shows their fix solves the problem WE were addressing rather than an adjacent one.
 //

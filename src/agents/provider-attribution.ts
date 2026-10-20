@@ -293,11 +293,7 @@ function resolveProviderAttributionPolicy(
   env: RuntimeVersionEnv = process.env as RuntimeVersionEnv,
 ): ProviderAttributionPolicy | undefined {
   const normalized = normalizeProviderId(provider ?? "");
-  // Third-party attribution identifies the OpenClaw build, never the product
-  // version stamped by a distribution: OpenAI gates model access on this value,
-  // so a product version below the model minimum is refused outright.
-  const compatibilityVersion = env.OPENCLAW_COMPATIBILITY_HOST_VERSION?.trim();
-  const version = compatibilityVersion || resolveRuntimeServiceVersion(env);
+  const version = resolveRuntimeServiceVersion(env);
   const userAgent = `${OPENCLAW_ATTRIBUTION_ORIGINATOR}/${version}`;
   const policy = {
     provider: normalized,
