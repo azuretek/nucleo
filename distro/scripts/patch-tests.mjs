@@ -58,12 +58,12 @@ for (const p of patches) {
     continue;
   }
   const files = (p.tests || []).filter((f) => existsSync(checkout + "/" + f));
-  if (!files.length) {
+  if (!files.length || files.length !== (p.tests || []).length) {
     console.log(
       String(p.n).padStart(2) +
         " " +
         p.branch.padEnd(46) +
-        " SKIP  none of its tests exist in this tree",
+        " FAIL  one or more declared tests are absent from this tree",
     );
     missing.push(p.branch + " (tests absent)");
     continue;
@@ -71,13 +71,18 @@ for (const p of patches) {
   // ★ Bounded per patch. An unbounded wait means one hung integration test stalls the whole
   // suite silently, which is indistinguishable from "still working" and wastes the run.
   const PER_PATCH_MS = 10 * 60 * 1000;
-  const r = spawnSync("pnpm", ["exec", "vitest", "run", ...files], {
-    cwd: checkout,
-    encoding: "utf8",
-    maxBuffer: 1 << 30,
-    timeout: PER_PATCH_MS,
-    killSignal: "SIGTERM",
-  });
+  const nodeTests = files.every((file) => file.startsWith("distro/") && file.endsWith(".test.mjs"));
+  const r = spawnSync(
+    nodeTests ? process.execPath : "pnpm",
+    nodeTests ? ["--test", ...files] : ["exec", "vitest", "run", ...files],
+    {
+      cwd: checkout,
+      encoding: "utf8",
+      maxBuffer: 1 << 30,
+      timeout: PER_PATCH_MS,
+      killSignal: "SIGTERM",
+    },
+  );
   const timedOut = r.signal === "SIGTERM" || /ETIMEDOUT/.test(String(r.error && r.error.code));
   const ok = r.status === 0;
   if (ok) held += 1;
