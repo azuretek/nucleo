@@ -5,11 +5,32 @@
 // that compares it: plugin compatibility, build-info and the CLI all read one number. So the pin's
 // version stays exactly as upstream shipped it, and this module carries the number people see.
 //
-// NUCLEO_VERSION is set by the image build (distro/scripts/nucleo.mjs) as <version>-dev.<build>.
-// Unset, as in a plain checkout, the product version falls back to the OpenClaw version alone.
-export function resolveNucleoVersion(env: NodeJS.ProcessEnv = process.env): string | null {
-  const value = env.NUCLEO_VERSION?.trim();
-  return value ? value : null;
+// Prefer NUCLEO_VERSION, then the separate product version when build-info carries it.
+// Neither source changes the OpenClaw version used for plugin compatibility.
+import { createRequire } from "node:module";
+
+export function readNucleoVersionFromBuildInfo(moduleUrl: string): string | null {
+  const require = createRequire(moduleUrl);
+  for (const candidate of ["./build-info.json", "../build-info.json", "../../build-info.json"]) {
+    try {
+      const parsed = require(candidate) as { nucleoVersion?: unknown } | null;
+      const value = typeof parsed?.nucleoVersion === "string" ? parsed.nucleoVersion.trim() : "";
+      if (value) {
+        return value;
+      }
+    } catch {
+      // Missing or unreadable build metadata is normal in a source checkout.
+    }
+  }
+  return null;
+}
+
+export function resolveNucleoVersion(
+  env: NodeJS.ProcessEnv = process.env,
+  moduleUrl: string = import.meta.url,
+  readBuildInfo: (url: string) => string | null = readNucleoVersionFromBuildInfo,
+): string | null {
+  return env.NUCLEO_VERSION?.trim() || readBuildInfo(moduleUrl);
 }
 
 /**
