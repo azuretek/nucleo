@@ -49,6 +49,8 @@ export type ControlUiBootstrapConfig = {
   assistantAvatarReason?: string | null;
   assistantAgentId?: string;
   serverVersion?: string;
+  /** Display only; serverVersion remains the compatibility version. */
+  productVersion?: string;
   /** Exact immutable build serving this Control UI when available. */
   serverBuildId?: string;
   /**

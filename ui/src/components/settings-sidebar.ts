@@ -52,6 +52,7 @@ type SettingsSidebarProps = {
   connectionStatus: GatewayStatus | null;
   lastError: string | null;
   gatewayVersion: string;
+  productVersion?: string | null;
   searchQuery: string;
   searchBlockMatches?: readonly SettingsSearchBlock[];
   searchParams?: Parameters<typeof findSettingsSearchBlocks>[0];
@@ -454,6 +455,7 @@ export function renderSettingsSidebar(props: SettingsSidebarProps) {
         <openclaw-sidebar-build-chip
           .basePath=${props.basePath}
           .gatewayVersion=${props.gatewayVersion || null}
+          .productVersion=${props.productVersion ?? null}
           .variant=${"settings"}
           .onNavigate=${() => props.onNavigate("about")}
         ></openclaw-sidebar-build-chip>
