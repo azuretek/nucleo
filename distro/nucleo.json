@@ -295,7 +295,7 @@
     },
     {
       "n": 31,
-      "pr": 142,
+      "pr": null,
       "branch": "nucleo/product-build-metadata",
       "subject": "persist the separate product version in image build metadata",
       "featureOrFix": "env-free images retain the product version without changing upstream compatibility",
