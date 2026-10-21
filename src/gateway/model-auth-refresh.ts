@@ -1,3 +1,4 @@
+import { listAgentIds } from "../agents/agent-scope.js";
 import { reloadSharedAuthStoreOwnership } from "../agents/auth-profiles/path-resolve.js";
 import { prepareModelRuntimeSnapshot } from "../agents/prepared-model-runtime.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -10,17 +11,21 @@ import { clearModelAuthStatusUsageCache } from "./server-methods/models-auth-sta
 
 export async function refreshModelAuthStateAfterMutation(
   getRuntimeConfig: () => OpenClawConfig,
-  agentId: string,
+  agentId?: string,
 ): Promise<void> {
   // The first CLI login can move the shared store after this Gateway pinned its owner.
   reloadSharedAuthStoreOwnership();
   clearModelAuthStatusUsageCache();
   await refreshActiveProviderAuthRuntimeSnapshot();
   const config = getRuntimeConfig();
-  const scope = resolveModelAuthAgentScope(config, agentId);
-  if (!scope.ok) {
-    throw new Error(modelAuthAgentScopeError(scope).message);
+  // A shared-store import belongs to every configured agent, not an arbitrary default.
+  const targets = agentId === undefined ? listAgentIds(config) : [agentId];
+  for (const target of targets) {
+    const scope = resolveModelAuthAgentScope(config, target);
+    if (!scope.ok) {
+      throw new Error(modelAuthAgentScopeError(scope).message);
+    }
+    // Persistence and secrets activation publish actual auth changes; join that generation.
+    await prepareModelRuntimeSnapshot({ config, agentId: scope.agentId, agentDir: scope.agentDir });
   }
-  // Persistence and secrets activation publish actual auth changes; join that generation.
-  await prepareModelRuntimeSnapshot({ config, agentId, agentDir: scope.agentDir });
 }

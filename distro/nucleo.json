@@ -187,14 +187,21 @@
       "pr": null,
       "branch": "fix/distro-not-upstream-source",
       "subject": "the fork tooling tree is not scanned as upstream source",
-      "featureOrFix": "the fork tooling tree is not scanned as upstream source"
+      "featureOrFix": "the fork tooling tree is not scanned as upstream source",
+      "tests": [
+        "distro/scripts/duplicate-source.test.mjs"
+      ]
     },
     {
       "n": 15,
       "pr": null,
       "branch": "fix/boundary-dts-timeout-knob",
       "subject": "let a slow host raise the boundary dts timeout",
-      "featureOrFix": "let a slow host raise the boundary dts timeout"
+      "featureOrFix": "let a slow host raise the boundary dts timeout",
+      "tests": [
+        "distro/scripts/boundary-timeout.test.mjs",
+        "distro/scripts/boundary-preparation.test.mjs"
+      ]
     },
     {
       "n": 19,
@@ -211,7 +218,10 @@
       "pr": null,
       "branch": "fix/typecheck-core-pin",
       "subject": "type the WAL timer stub and the Vitest project cache hook",
-      "featureOrFix": "type the WAL timer stub and the Vitest project cache hook"
+      "featureOrFix": "type the WAL timer stub and the Vitest project cache hook",
+      "tests": [
+        "distro/scripts/tooling-types.test.mjs"
+      ]
     },
     {
       "n": 25,
@@ -270,7 +280,34 @@
       ]
     },
     {
+      "n": 30,
+      "pr": null,
+      "branch": "nucleo/claude-subscription-keeper",
+      "subject": "opt-in Claude CLI subscription credential keeper",
+      "featureOrFix": "an explicitly enabled Linux keeper lets Claude CLI exclusively refresh subscription credentials and synchronizes access-only material through a revocable provider-bound Gateway service capability, with single-flight, backoff, quota-aware health and no paid fallback",
+      "tests": [
+        "extensions/anthropic/subscription-keeper.test.ts",
+        "extensions/anthropic/subscription-keeper-linux.test.ts",
+        "src/plugins/services.token-import.test.ts",
+        "src/plugins/services.token-import.integration.test.ts",
+        "src/gateway/model-auth-refresh.subscription.test.ts"
+      ]
+    },
+    {
       "n": 31,
+      "pr": null,
+      "branch": "nucleo/product-build-metadata",
+      "subject": "persist the separate product version in image build metadata",
+      "featureOrFix": "env-free images retain the product version without changing upstream compatibility",
+      "tests": [
+        "test/scripts/write-build-info.test.ts",
+        "src/cli/banner.product-version.test.ts",
+        "src/cli/banner.test.ts",
+        "src/nucleo-version.test.ts"
+      ]
+    },
+    {
+      "n": 32,
       "pr": 138,
       "branch": "nucleo/control-ui-product-version",
       "subject": "show the product version in Control UI navigation",
@@ -327,9 +364,6 @@
     {
       "name": "build",
       "covers": [
-        "fix/distro-not-upstream-source",
-        "fix/boundary-dts-timeout-knob",
-        "fix/typecheck-core-pin",
         "nucleo/docker-build-step-cache"
       ]
     }

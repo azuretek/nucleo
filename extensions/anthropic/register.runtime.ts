@@ -58,6 +58,7 @@ import {
   createAnthropicClaudeCodeIdentityWrapper,
   wrapAnthropicProviderStream,
 } from "./stream-wrappers.js";
+import { registerClaudeSubscriptionKeeper } from "./subscription-keeper.js";
 import { fetchAnthropicUsage, resolveAnthropicUsageAuth } from "./usage.js";
 
 // Registration needs descriptors, not auth persistence or external credential discovery.
@@ -661,6 +662,7 @@ export function buildAnthropicProvider(): ProviderPlugin {
 }
 
 export function registerAnthropicPlugin(api: OpenClawPluginApi): void {
+  registerClaudeSubscriptionKeeper(api);
   const version = createClaudeCodeVersionProbe(api);
   api.registerCliBackend(buildAnthropicCliBackend(version));
   api.registerProvider({

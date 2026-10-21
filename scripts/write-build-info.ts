@@ -22,6 +22,7 @@ type ExecFileSync = (
 
 export type BuildInfo = {
   version: string | null;
+  nucleoVersion?: string;
   commit: string | null;
   builtAt: string;
   buildId: string;
@@ -123,6 +124,7 @@ export function resolveBuildInfo(options: ResolveBuildInfoOptions = {}): BuildIn
 
   return {
     version: readPackageVersion(rootDir),
+    ...(env.NUCLEO_VERSION?.trim() ? { nucleoVersion: env.NUCLEO_VERSION.trim() } : {}),
     commit,
     builtAt,
     buildId,

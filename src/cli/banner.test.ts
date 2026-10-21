@@ -40,6 +40,15 @@ function setStdoutIsTty(value: boolean) {
 }
 
 describe("formatCliBannerLine", () => {
+  it("shows the explicit product version beside the upstream version in the Gateway banner", () => {
+    expect(
+      formatCliBannerLine("2026.9.8", {
+        ...bannerOptions,
+        env: { NUCLEO_VERSION: " 0.0.1-dev.141 " },
+      }),
+    ).toBe("🦞 Núcleo 0.0.1-dev.141 (OpenClaw 2026.9.8) (abc1234)");
+  });
+
   it("uses the default tagline when explicitly requested", () => {
     const line = formatCliBannerLine("2026.3.7", {
       ...bannerOptions,
