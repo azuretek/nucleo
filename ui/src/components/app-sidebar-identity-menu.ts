@@ -28,6 +28,7 @@ type SidebarIdentityMenuParams = {
   canPairDevice: boolean;
   basePath: string;
   gatewayVersion: string | null;
+  productVersion?: string | null;
   updateAttentionDismissed: boolean;
   profileViewer?: PresenceViewer;
   canRetryConnection: boolean;
@@ -273,6 +274,7 @@ export function renderSidebarIdentityMenu(params: SidebarIdentityMenuParams) {
           .variant=${"identity"}
           .basePath=${params.basePath}
           .gatewayVersion=${params.gatewayVersion}
+          .productVersion=${params.productVersion ?? null}
           .updateAttentionDismissed=${params.updateAttentionDismissed}
           .onNavigate=${(routeId: "about") => {
             params.onClose();

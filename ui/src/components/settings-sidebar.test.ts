@@ -56,6 +56,41 @@ afterEach(async () => {
 });
 
 describe("settings sidebar search", () => {
+  it.each(["Núcleo 0.0.1-dev.104 (OpenClaw 2026.9.8)", null])(
+    "passes product display %s separately to the rendered Settings chip",
+    async (productVersion) => {
+      render(
+        renderSettingsSidebar({
+          ...sidebarAgentProps(),
+          basePath: "",
+          activeRouteId: "appearance",
+          connectionStatus: null,
+          lastError: null,
+          gatewayVersion: "2026.9.8",
+          productVersion,
+          searchQuery: "",
+          onExit: vi.fn(),
+          onRetryConnect: vi.fn(),
+          onNavigate: vi.fn(),
+          onSearchQueryChange: vi.fn(),
+          preloadTimers: new Map(),
+          saveIndicator: saveIndicator(),
+        }),
+        container,
+      );
+      const chip = container.querySelector("openclaw-sidebar-build-chip") as HTMLElement & {
+        productVersion: string | null;
+        gatewayVersion: string;
+        updateComplete: Promise<unknown>;
+      };
+      await chip.updateComplete;
+      expect(chip.productVersion).toBe(productVersion);
+      expect(chip.gatewayVersion).toBe("2026.9.8");
+      expect(chip.querySelector(".sidebar-footer-build__text")?.textContent).toContain(
+        productVersion ?? "2026.9.8",
+      );
+    },
+  );
   it("keeps save recovery available in the embedded page header", async () => {
     const onRetry = vi.fn();
     render(

@@ -75,6 +75,15 @@ describe("formatBuildChipText", () => {
 });
 
 describe("formatSettingsBuildLabel", () => {
+  it("keeps product display ahead of bundled compatibility metadata", () => {
+    const product = "Núcleo 0.0.1-dev.104 (OpenClaw 2026.9.8)";
+    expect(formatSettingsBuildLabel(buildInfo({ release: true }), "2026.7.9", product)).toBe(
+      product,
+    );
+    expect(formatSettingsBuildLabel(buildInfo(), "2026.7.9", product)).toBe(
+      product + " · git@e8cbc62",
+    );
+  });
   it("keeps official release artifacts version-only", () => {
     expect(formatSettingsBuildLabel(buildInfo({ release: true }), "2026.7.9")).toBe("2026.7.10");
   });

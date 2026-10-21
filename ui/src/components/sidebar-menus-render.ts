@@ -181,6 +181,7 @@ export function renderSidebarIdentityMenuForController(controller: SidebarMenusC
     canPairDevice: host.canPairDevice,
     basePath: host.basePath,
     gatewayVersion: host.gatewayVersion,
+    productVersion: host.productVersion,
     updateAttentionDismissed,
     profileViewer: selfUser ? { ...selfUser, watchedSessions: [] } : undefined,
     canRetryConnection: canRetryGatewayStatus(host.connectionStatus),

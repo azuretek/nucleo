@@ -254,6 +254,7 @@ export function renderApplicationShell(host: ShellViewHost) {
       pinnedAgentIds: navigationSnapshot.pinnedAgentIds,
       themeMode: context.theme.mode,
       gatewayVersion: config.serverVersion ?? gatewaySnapshot.hello?.server?.version ?? null,
+      productVersion: config.productVersion ?? null,
       devGitBranch: config.devGitBranch,
       watchUpdateProgress,
       onOpenPalette: host.openPalette,
@@ -306,6 +307,7 @@ export function renderApplicationShell(host: ShellViewHost) {
           connectionStatus,
           lastError: gatewaySnapshot.lastError,
           gatewayVersion: config.serverVersion ?? gatewaySnapshot.hello?.server?.version ?? "",
+          productVersion: config.productVersion ?? null,
           searchQuery: embedSettingsRoot ? "" : host.settingsSearchQuery,
           searchParams: {
             query: host.settingsSearchQuery,

@@ -927,6 +927,7 @@ export async function handleControlUiHttpRequest(
     const avatarMeta = controlUiAvatarResolutionMeta(avatarProjection.resolution);
     const devGitBranch = (await resolveDevInstallGitBranch()) ?? undefined;
     requestAuth.assertCurrent();
+    const serverVersion = resolveRuntimeServiceVersion(process.env);
     sendJson(res, 200, {
       basePath,
       assistantName: identity.name,
@@ -935,13 +936,13 @@ export async function handleControlUiHttpRequest(
       assistantAvatarStatus: avatarMeta.avatarStatus,
       assistantAvatarReason: avatarMeta.avatarReason,
       ...(assistantAgentId ? { assistantAgentId } : {}),
-      serverVersion: resolveRuntimeServiceVersion(process.env),
+      serverVersion,
       serverBuildId:
         config?.gateway?.controlUi?.root === undefined
           ? (resolveRuntimeServiceBuildId() ?? undefined)
           : undefined,
       devGitBranch,
-      ...resolveControlUiBootstrapPresentation(config),
+      ...resolveControlUiBootstrapPresentation(config, serverVersion),
       terminalEnabled,
       cliAgentsEnabled: config?.gateway?.cliAgents?.enabled !== false,
       pluginAssetsRequireAuth: opts?.auth !== undefined && opts.auth.mode !== "none",
