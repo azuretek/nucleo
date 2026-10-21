@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import module from "node:module";
@@ -422,6 +421,24 @@ const loadPrecomputedHelpText = (key, subkey) => {
   }
 };
 
+// The launcher runs under plain Node in the published image, where only dist/ exists, so it
+// cannot import the TypeScript module that owns this string. The shape is repeated here for
+// that reason, and src/nucleo-version.test.ts asserts the same string so the two cannot drift.
+function formatLauncherProductVersion(openclawVersion) {
+  const nucleo =
+    normalizeLauncherMetadataValue(process.env.NUCLEO_VERSION) ?? readLauncherNucleoVersion();
+  return nucleo ? `Núcleo ${nucleo} (OpenClaw ${openclawVersion})` : `Núcleo ${openclawVersion}`;
+}
+
+function readLauncherNucleoVersion() {
+  try {
+    const raw = readFileSync(new URL("./dist/build-info.json", import.meta.url), "utf8");
+    const parsed = JSON.parse(raw);
+    return normalizeLauncherMetadataValue(parsed?.nucleoVersion);
+  } catch {
+    return undefined;
+  }
+}
 function tryOutputLauncherVersion(argv) {
   try {
     if (normalizeLauncherMetadataValue(process.env.OPENCLAW_CONTAINER)) {
@@ -432,7 +449,8 @@ function tryOutputLauncherVersion(argv) {
     }
     const version = resolveLauncherVersion();
     const commit = resolveLauncherCommit();
-    process.stdout.write(commit ? `OpenClaw ${version} (${commit})\n` : `OpenClaw ${version}\n`);
+    const shown = formatLauncherProductVersion(version);
+    process.stdout.write(commit ? `${shown} (${commit})\n` : `${shown}\n`);
     return true;
   } catch {
     return false;
