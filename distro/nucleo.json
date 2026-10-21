@@ -292,6 +292,19 @@
         "src/plugins/services.token-import.integration.test.ts",
         "src/gateway/model-auth-refresh.subscription.test.ts"
       ]
+    },
+    {
+      "n": 31,
+      "pr": null,
+      "branch": "nucleo/product-build-metadata",
+      "subject": "persist the separate product version in image build metadata",
+      "featureOrFix": "env-free images retain the product version without changing upstream compatibility",
+      "tests": [
+        "test/scripts/write-build-info.test.ts",
+        "src/cli/banner.product-version.test.ts",
+        "src/cli/banner.test.ts",
+        "src/nucleo-version.test.ts"
+      ]
     }
   ],
   "version": "0.0.1",

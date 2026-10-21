@@ -19,6 +19,21 @@ describe("write-build-info", () => {
     return rootDir;
   }
 
+  it("persists the separate product version without changing upstream provenance", () => {
+    const rootDir = createPackage("2026.9.8");
+    const output = writeBuildInfo({
+      rootDir,
+      env: { NUCLEO_VERSION: " 0.0.1-dev.104 ", GIT_COMMIT: "a".repeat(40) },
+    });
+    const info = JSON.parse(fs.readFileSync(output, "utf8"));
+    expect(info.nucleoVersion).toBe("0.0.1-dev.104");
+    expect(info.version).toBe("2026.9.8");
+    expect(info.buildId).toMatch(/^2026\.9\.8-/u);
+    expect(JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf8")).version).toBe(
+      "2026.9.8",
+    );
+  });
+
   it("normalizes explicit release provenance and writes the shared manifest", () => {
     const rootDir = createPackage();
     const execFileSync = vi.fn(() => {
