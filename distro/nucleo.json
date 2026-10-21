@@ -32,16 +32,6 @@
   ],
   "patches": [
     {
-      "n": 30,
-      "pr": null,
-      "branch": "nucleo/product-build-metadata",
-      "subject": "persist the separate product version in image build metadata",
-      "featureOrFix": "env-free images retain the product version without changing upstream compatibility",
-      "tests": [
-        "test/scripts/write-build-info.test.ts"
-      ]
-    },
-    {
       "n": 2,
       "pr": 163964,
       "branch": "fix/image-draft-snapshot",
@@ -277,6 +267,19 @@
       "tests": [
         "src/infra/update-github-releases.test.ts",
         "src/infra/update-startup.github-releases.test.ts"
+      ]
+    },
+    {
+      "n": 30,
+      "pr": null,
+      "branch": "nucleo/product-build-metadata",
+      "subject": "persist the separate product version in image build metadata",
+      "featureOrFix": "env-free images retain the product version without changing upstream compatibility",
+      "tests": [
+        "test/scripts/write-build-info.test.ts",
+        "src/cli/banner.product-version.test.ts",
+        "src/cli/banner.test.ts",
+        "src/nucleo-version.test.ts"
       ]
     }
   ],
