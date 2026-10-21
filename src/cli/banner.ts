@@ -8,6 +8,7 @@ import {
 } from "../../packages/terminal-core/src/decorative-emoji.js";
 import { isRich, theme } from "../../packages/terminal-core/src/theme.js";
 import { resolveCommitHash } from "../infra/git-commit.js";
+import { formatProductVersion, resolveNucleoVersion } from "../nucleo-version.js";
 import { hasRootVersionAlias } from "./argv.js";
 import { parseTaglineMode } from "./banner-config-lite.js";
 import { pickCliLobsterArt } from "./lobster-art.js";
@@ -49,15 +50,16 @@ export function formatCliBannerLine(version: string, options: BannerOptions = {}
     emojiOptions,
   );
   const rich = options.richTty ?? isRich();
-  const title = decorativePrefix("🦞", "Núcleo", emojiOptions);
+  const productVersion = formatProductVersion(version, resolveNucleoVersion(options.env));
+  const title = decorativePrefix("🦞", productVersion, emojiOptions);
   const prefix = decorativeEmoji("🦞", emojiOptions);
   const indent = prefix ? `${prefix} ` : "";
   const columns = options.columns ?? process.stdout.columns ?? 120;
-  const plainBaseLine = `${title} ${version} (${commitLabel})`;
+  const plainBaseLine = `${title} (${commitLabel})`;
   const plainFullLine = tagline ? `${plainBaseLine} · ${tagline}` : plainBaseLine;
   const fitsOnOneLine = visibleWidth(plainFullLine) <= columns;
   const baseLine = rich
-    ? `${theme.heading(title)} ${theme.info(version)} ${theme.muted(`(${commitLabel})`)}`
+    ? `${theme.heading(title)} ${theme.muted(`(${commitLabel})`)}`
     : plainBaseLine;
   if (!tagline) {
     return baseLine;
