@@ -25,6 +25,7 @@ One row per patch in `nucleo.json`, which is the machine-readable copy. Upstream
 | 28  | ours     | `nucleo/product-name`                          | show Núcleo as the product name people see                        |
 | 29  | ours     | `nucleo/update-source`                         | read update notices from Núcleo's own releases                    |
 | 30  | ours     | `nucleo/claude-subscription-keeper`            | opt-in Claude CLI subscription credential keeper                  |
+| 31  | ours     | `nucleo/product-build-metadata`                | persist the separate product version in image metadata            |
 
 ## How a patch is carried
 

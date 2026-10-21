@@ -132,6 +132,8 @@ RUN sh scripts/docker/verify-native-addons.sh
 ARG GIT_COMMIT=""
 ARG OPENCLAW_BUILD_TIMESTAMP=""
 ARG OPENCLAW_DOCKER_BUILD_VERSION=""
+ARG NUCLEO_VERSION=""
+ENV NUCLEO_VERSION=${NUCLEO_VERSION}
 ENV GIT_COMMIT=${GIT_COMMIT} \
     OPENCLAW_BUILD_TIMESTAMP=${OPENCLAW_BUILD_TIMESTAMP}
 
@@ -334,6 +336,9 @@ RUN if [ -n "$OPENCLAW_DOCKER_BUILD_VERSION" ]; then \
         *) echo "version assertion failed: the CLI printed \"$cli_output\", which does not name $OPENCLAW_DOCKER_BUILD_VERSION" >&2; exit 1 ;; \
       esac; \
       if [ -n "$NUCLEO_VERSION" ]; then \
+        test "$(node -p "require(\"/app/dist/build-info.json\").nucleoVersion")" = "$NUCLEO_VERSION"; \
+        env_free_output="$(env -u NUCLEO_VERSION node /app/openclaw.mjs --version)"; \
+        test "$env_free_output" = "$cli_output"; \
         case "$cli_output" in \
           *"$NUCLEO_VERSION"*) ;; \
           *) echo "version assertion failed: the CLI printed \"$cli_output\", which does not name $NUCLEO_VERSION" >&2; exit 1 ;; \
