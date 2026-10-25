@@ -319,6 +319,18 @@
         "ui/src/components/sidebar-build-chip.node.test.ts",
         "ui/src/components/settings-sidebar.test.ts"
       ]
+    },
+    {
+      "n": 33,
+      "pr": 167031,
+      "branch": "nucleo/quiet-page-resume",
+      "subject": "preserve terminal connection state on page resume",
+      "featureOrFix": "activation recovers stale retryable clients without restarting stopped, authentication-failed or reload-required connections",
+      "tests": [
+        "ui/src/app/gateway-page-activation.test.ts",
+        "ui/src/app/gateway-store.auth.test.ts",
+        "ui/src/api/gateway.node.test.ts"
+      ]
     }
   ],
   "version": "0.0.1",
