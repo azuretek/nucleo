@@ -107,34 +107,35 @@ export function createGatewayChatUserTurnController(params: {
       }))
     : Promise.resolve(baseInput);
   let contextFreeCommand = false;
+  // Attribution and submitted bytes survive reconnect; display names, leaf
+  // cursors and generated media paths are not immutable request identity.
+  const pendingInputRequestFingerprint =
+    sender?.id && !request.goalOperation
+      ? createHash("sha256")
+          .update(
+            stableStringify([
+              {
+                ...request.p,
+                sessionId: admission.sessionBinding.sessionId,
+                expectedLeafEntryId: undefined,
+              },
+              sender.identity ?? sender.id,
+              hasGatewayAdminScope(params.client),
+            ]),
+          )
+          .digest("hex")
+      : undefined;
+  // Reuse the authenticated request fingerprint and transactional completion owner.
+  // Transcript promotion alone is not terminal processing: direct custody is deleted.
+  const trackInputCompletion = Boolean(
+    senderProfileId &&
+    !params.client?.internal?.syntheticClient &&
+    isBrowserOperatorUiClient(params.client?.connect.client) &&
+    !request.goalOperation,
+  );
   const recorder: UserTurnTranscriptRecorder = createUserTurnTranscriptRecorder({
-    // Reuse the authenticated request fingerprint and transactional completion owner.
-    // Transcript promotion alone is not terminal processing: direct custody is deleted.
-    trackInputCompletion: Boolean(
-      senderProfileId &&
-      !params.client?.internal?.syntheticClient &&
-      isBrowserOperatorUiClient(params.client?.connect.client) &&
-      !request.goalOperation,
-    ),
-    ...(sender?.id && !request.goalOperation
-      ? {
-          // Attribution and submitted bytes survive reconnect; display names, leaf
-          // cursors and generated media paths are not immutable request identity.
-          pendingInputRequestFingerprint: createHash("sha256")
-            .update(
-              stableStringify([
-                {
-                  ...request.p,
-                  sessionId: admission.sessionBinding.sessionId,
-                  expectedLeafEntryId: undefined,
-                },
-                sender.identity ?? sender.id,
-                hasGatewayAdminScope(params.client),
-              ]),
-            )
-            .digest("hex"),
-        }
-      : {}),
+    trackInputCompletion,
+    ...(pendingInputRequestFingerprint ? { pendingInputRequestFingerprint } : {}),
     ...(request.goalOperation
       ? {
           sessionTurnMutation: {
@@ -167,6 +168,15 @@ export function createGatewayChatUserTurnController(params: {
           admission: admission.restartSafeAdmission,
           clientRunId: session.clientRunId,
           startedAt: params.startedAt,
+          // Staged tracked input hashes as request:<fingerprint>; recovery must reuse it.
+          ...(trackInputCompletion && pendingInputRequestFingerprint
+            ? {
+                inputCompletion: {
+                  sessionId: admission.sessionBinding.sessionId,
+                  requestHash: `request:${pendingInputRequestFingerprint}`,
+                },
+              }
+            : {}),
         })
       : {}),
     errorContext: "gateway chat user turn transcript",

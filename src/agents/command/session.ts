@@ -94,6 +94,7 @@ export function clearRotatedSessionMetadata(entry: InternalSessionEntry): Intern
     restartRecoveryDisableMessageTool: undefined,
     restartRecoverySuppressTextDelivery: undefined,
     restartRecoveryDeliveryRequestFingerprint: undefined,
+    restartRecoveryInputCompletion: undefined,
     restartRecoveryDeliveryRunId: undefined,
     restartRecoveryDeliverySourceRunId: undefined,
     restartRecoveryBeforeAgentReplyState: undefined,

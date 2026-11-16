@@ -22,6 +22,7 @@ import {
 } from "../../config/sessions/session-accessor.js";
 import { buildRestartRecoveryExpectedState } from "../../config/sessions/session-transcript-turn-state.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { loadOrCreateProcessDeviceIdentity } from "../../infra/device-identity.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { findRestartRecoveryUnsafeChatAdmissionHook } from "../../plugins/restart-recovery-hook-safety.js";
@@ -29,6 +30,7 @@ import { isCronSessionKey, isSubagentSessionKey } from "../../routing/session-ke
 import { isAgentHarnessSessionKey } from "../../sessions/agent-harness-session-key.js";
 import { isAcpSessionKey, resolveSessionDispatchKind } from "../../sessions/session-key-utils.js";
 import { recordGatewaySessionRunFailure } from "../../sessions/session-run-error.js";
+import { buildRunUserTurnIdempotencyKey } from "../../sessions/user-turn-transcript.metadata.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
 import { parseInlineDirectives } from "../../utils/directive-tags.js";
 import { resolveChatRunOwnerAgentId } from "../chat-run-owner.js";
@@ -68,7 +70,7 @@ type RetryableUnadoptedChatClaim = SessionEntry & {
 
 type DurableChatClaimResolution =
   | { kind: "continue"; entry?: SessionEntry }
-  | { kind: "accepted" }
+  | { kind: "accepted"; inFlight: boolean }
   | { kind: "pending"; message: string }
   | { kind: "rejected"; message: string; unavailable?: true };
 
@@ -226,10 +228,16 @@ export async function resolveDurableChatClaim(params: {
       };
     }
   }
-  return isAdoptedRestartRecoveryClaim(entry, params.clientRunId) ||
-    hasRestartRecoveryTerminalRun(entry, params.clientRunId)
-    ? { kind: "accepted" }
-    : { kind: "continue", entry };
+  const adopted = isAdoptedRestartRecoveryClaim(entry, params.clientRunId);
+  if (!adopted && !hasRestartRecoveryTerminalRun(entry, params.clientRunId)) {
+    return { kind: "continue", entry };
+  }
+  // Accepted is not completed: an adopted claim, or a source tombstoned mid-run whose
+  // completion is still owed, stays in flight until the settling commit marks it done.
+  const inFlight =
+    entry?.status === "running" &&
+    (adopted || entry.restartRecoveryInputCompletion?.sourceRunId === params.clientRunId);
+  return { kind: "accepted", inFlight };
 }
 
 function isRestartSafeChatSession(params: {
@@ -365,6 +373,8 @@ export function buildRestartSafeChatTranscriptState(params: {
   admission: RestartSafeChatAdmission;
   clientRunId: string;
   startedAt: number;
+  /** Tracked browser input whose completion row an adopting recovery must write. */
+  inputCompletion?: { sessionId: string; requestHash: string };
 }): {
   expectedSessionState?: SessionTranscriptTurnExpectedState;
   sessionLifecyclePatch: SessionTranscriptTurnLifecyclePatch;
@@ -395,6 +405,17 @@ export function buildRestartSafeChatTranscriptState(params: {
       restartRecoverySourceReplyDeliveryMode: undefined,
       ...(params.admission.priorTerminalSourceRunId
         ? { restartRecoveryTerminalRunIds: [params.admission.priorTerminalSourceRunId] }
+        : {}),
+      ...(params.inputCompletion
+        ? {
+            restartRecoveryInputCompletion: {
+              sourceRunId: params.clientRunId,
+              sessionId: params.inputCompletion.sessionId,
+              idempotencyKey: buildRunUserTurnIdempotencyKey(params.clientRunId),
+              requestHash: params.inputCompletion.requestHash,
+              lifecycleGeneration: getAgentEventLifecycleGeneration(),
+            },
+          }
         : {}),
     },
   };

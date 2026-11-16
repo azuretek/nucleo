@@ -9,6 +9,7 @@ import { getChildLogger } from "../../logging/logger.js";
 import { isIncognitoSessionKey } from "../../shared/incognito-session-key.js";
 import type { OpenClawAgentDatabase } from "../../state/openclaw-agent-db.js";
 import type { ConversationRouteContext } from "./conversation-route-context.js";
+import { settleRestartRecoveryInputCompletion } from "./restart-recovery-input-completion.js";
 import { retainLegacyAcpMigrationSourcesForEntry } from "./session-accessor.sqlite-acp-provenance.js";
 import {
   linkSessionConversation,
@@ -553,6 +554,8 @@ export function writeSessionEntry(
   if (previousEntry && previousEntry.sessionId !== normalizedEntry.sessionId) {
     delete normalizedEntry.visibility;
   }
+  // An adopting recovery's done commit owes the original input's completion row.
+  normalizedEntry = settleRestartRecoveryInputCompletion(database, sessionKey, normalizedEntry);
   // Collaboration rows belong to the exact canonical node being overwritten,
   // which can differ from the selected alias during canonicalization.
   if (canonicalPreviousEntry && canonicalPreviousEntry.sessionId !== normalizedEntry.sessionId) {
