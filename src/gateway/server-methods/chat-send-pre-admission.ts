@@ -676,8 +676,10 @@ export async function runChatSendPreAdmission(
       return false;
     }
     // An active source claim or terminal tombstone proves the durable turn
-    // was already accepted. Retire the outbox without dispatching twice.
-    respond(true, { runId: clientRunId, status: "ok" as const }, undefined, {
+    // was already accepted. Retire the outbox without dispatching twice; a
+    // recovery that has not committed its outcome is reported in flight.
+    const status = durableClaim.inFlight ? ("in_flight" as const) : ("ok" as const);
+    respond(true, { runId: clientRunId, status }, undefined, {
       cached: true,
       runId: clientRunId,
     });

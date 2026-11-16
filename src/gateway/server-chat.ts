@@ -562,7 +562,23 @@ export function createAgentEventHandler({
     evt = terminal.event;
     lifecyclePhase = terminal.phase;
     clearPendingTerminalLifecycleError(evt.runId, evt.lifecycleGeneration);
-    let terminalPersistence: Promise<void> | undefined;
+    // upstream 94c0f0d589 (#167383): start the terminal write before any chat terminal.
+    const terminalPersistence =
+      sessionKey && !suppressRestartRecoveryProjection && projectSessionLifecycle
+        ? persistGatewaySessionLifecycleEventForEvent({
+            sessionKey,
+            agentId: sessionAgentId,
+            event: {
+              ...evt,
+              ...(evt.contextClaimId ? { contextClaimId: evt.contextClaimId } : {}),
+              ...(eventRunId !== evt.runId ? { clientRunId: eventRunId } : {}),
+              ...(evt.lifecycleGeneration ? { lifecycleGeneration: evt.lifecycleGeneration } : {}),
+              ...(evt.mainSessionRestartRecovery === true
+                ? { mainSessionRestartRecovery: true as const }
+                : {}),
+            },
+          })
+        : undefined;
 
     if (
       !replyDispatchOwnsCompletion &&
@@ -609,6 +625,10 @@ export function createAgentEventHandler({
               assistantTranscriptIdempotencyKey: readStringValue(
                 evt.data?.assistantTranscriptIdempotencyKey,
               ),
+              // A restart-recovery final reports durable completion; it waits for that commit.
+              ...(evt.mainSessionRestartRecovery === true && terminalPersistence
+                ? { terminalPersistence }
+                : {}),
             },
           );
         }
@@ -634,22 +654,9 @@ export function createAgentEventHandler({
 
     if (sessionKey) {
       clearTrackedActiveRun?.({ runId: evt.runId, clientRunId, sessionKey });
-      if (!suppressRestartRecoveryProjection && projectSessionLifecycle) {
+      if (terminalPersistence) {
         const projection = getSessionRowProjection?.();
-        const persistence = persistGatewaySessionLifecycleEventForEvent({
-          sessionKey,
-          agentId: sessionAgentId,
-          event: {
-            ...evt,
-            ...(evt.contextClaimId ? { contextClaimId: evt.contextClaimId } : {}),
-            ...(eventRunId !== evt.runId ? { clientRunId: eventRunId } : {}),
-            ...(evt.lifecycleGeneration ? { lifecycleGeneration: evt.lifecycleGeneration } : {}),
-            ...(evt.mainSessionRestartRecovery === true
-              ? { mainSessionRestartRecovery: true as const }
-              : {}),
-          },
-        });
-        terminalPersistence = persistence;
+        const persistence = terminalPersistence;
         trackTrackedRunTerminalPersistence?.({
           runId: evt.runId,
           clientRunId,
@@ -1030,8 +1037,21 @@ export function createAgentEventHandler({
       errorObservation?: unknown;
       assistantTranscriptIdempotencyKey?: string;
       isHeartbeat?: boolean;
+      terminalPersistence?: Promise<void>;
     },
   ) => {
+    // upstream #167383: a terminal must not outrun its durable commit. Other finals keep
+    // synchronous delivery; a failed write still publishes the terminal exactly once.
+    const publishTerminal = (payload: Parameters<typeof sendLivePayload>[2]) => {
+      const publish = () => sendLivePayload("chat", sessionKey, payload, opts);
+      if (opts?.terminalPersistence) {
+        void opts.terminalPersistence.then(publish, publish).catch((publicationError: unknown) => {
+          logError(`gateway: terminal chat publication failed: ${formatForLog(publicationError)}`);
+        });
+      } else {
+        publish();
+      }
+    };
     const { text, shouldSuppressSilent } = resolveBufferedChatTextState(clientRunId, sourceRunId, {
       final: true,
       suppressLeadFragments: false,
@@ -1094,7 +1114,7 @@ export function createAgentEventHandler({
       if (payload.message) {
         emitFirstAssistantChatSendTiming(opts?.firstAssistantTimingEntry);
       }
-      sendLivePayload("chat", sessionKey, payload, opts);
+      publishTerminal(payload);
       chatRunState.clearRun(clientRunId);
       return;
     }
@@ -1112,7 +1132,7 @@ export function createAgentEventHandler({
       ...(errorDetail ? { errorDetail } : {}),
       ...(stopReason && { stopReason }),
     };
-    sendLivePayload("chat", sessionKey, payload, opts);
+    publishTerminal(payload);
     chatRunState.clearRun(clientRunId);
   };
 
