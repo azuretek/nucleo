@@ -83,6 +83,8 @@ export type SessionPendingInputReceipt = {
   finish: (disposition: Exclude<SessionPendingInputState, "queued">) => void;
   completion?: AgentRunTerminalOutcome;
   complete?: (outcome: AgentRunTerminalOutcome) => AgentRunTerminalOutcome;
+  /** True once the owner recorded interruption or cancellation; a later completion is stale. */
+  released?: () => boolean;
 };
 const receiptOwners = new WeakMap<SessionPendingInputReceipt, SessionPendingInputOwner>();
 const completionTransactions = new WeakMap<
@@ -321,7 +323,10 @@ export async function stageSessionPendingInput(
         if (
           (!options.requestFingerprint && !options.trackCompletion) ||
           (existing.state !== "queued" && existing.state !== "interrupted") ||
-          (existing.lifecycle_generation === lifecycleGeneration && !options.trackCompletion)
+          // Only private agent completion may resume within its own generation; a
+          // fingerprinted chat input interrupted by this process stays ended.
+          (existing.lifecycle_generation === lifecycleGeneration &&
+            (!options.trackCompletion || options.requestFingerprint !== undefined))
         ) {
           throw new Error("Pending input ownership ended; submit a new turn to continue");
         }
@@ -362,7 +367,7 @@ export async function stageSessionPendingInput(
           finish: () => {
             finished = true;
           },
-          ...(complete ? { complete } : {}),
+          ...(complete ? { complete, released: () => finished } : {}),
         };
       }
       const prepared = existing
@@ -465,6 +470,7 @@ export async function stageSessionPendingInput(
       const receipt = ownerReceipt(owner);
       if (complete) {
         receipt.complete = complete;
+        receipt.released = () => finished;
         completionTransactions.set(receipt, (operation) =>
           runOpenClawAgentWriteTransaction(operation, databaseOptions, {
             operationLabel: "session.pending-input.record-collected-outcome",
