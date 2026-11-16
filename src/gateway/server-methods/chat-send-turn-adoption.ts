@@ -43,6 +43,7 @@ export function createChatSendTurnAdoptionLifecycle(params: {
   hasCronCreatorAuthority: boolean;
   suppressReplies?: boolean;
   retainWorkAdmission: () => () => void;
+  completeInput?: () => void;
   armOperatorRunCancellation?: () => void;
   retireOperatorRunCancellation?: () => void;
 }): {
@@ -92,6 +93,10 @@ export function createChatSendTurnAdoptionLifecycle(params: {
     logGateway: params.context.logGateway,
     deliver: params.suppressReplies
       ? async ({ completion }) => {
+          if (completion.kind === "completed") {
+            params.controller.signal.throwIfAborted();
+            params.completeInput?.();
+          }
           terminalKnown ||= completion.kind !== "progress";
           return { kind: "dropped" as const, reason: "no-visible-content" as const };
         }
@@ -101,6 +106,10 @@ export function createChatSendTurnAdoptionLifecycle(params: {
           accountId: params.accountId,
           context: params.context,
           session: params.session,
+          beforeCompletedPublication: () => {
+            params.controller.signal.throwIfAborted();
+            params.completeInput?.();
+          },
         }),
   });
   const lifecycle: TurnAdoptionLifecycle = {

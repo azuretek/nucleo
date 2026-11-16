@@ -65,6 +65,7 @@ type FinalizeChatSendAgentRepliesBase = {
   accountId: string | undefined;
   context: GatewayRequestContext;
   emitFirstAssistantServerTiming: () => void;
+  deferTerminalPublication?: (publish: () => void) => void;
   session: Pick<
     PreparedChatSendSession,
     "agentId" | "backingSessionId" | "cfg" | "clientRunId" | "sessionKey" | "sessionLoadOptions"
@@ -76,7 +77,9 @@ type ChatSendAgentReplyFinalization =
   | { kind: "dropped"; reason: "no-visible-content" };
 
 export function createChatSendLateReplyFinalizer(
-  params: Omit<FinalizeChatSendAgentRepliesBase, "emitFirstAssistantServerTiming">,
+  params: Omit<FinalizeChatSendAgentRepliesBase, "emitFirstAssistantServerTiming"> & {
+    beforeCompletedPublication?: () => void;
+  },
 ) {
   return async ({
     runId,
@@ -104,7 +107,7 @@ export function createChatSendLateReplyFinalizer(
         session: { ...session, clientRunId: runId },
         suppressFinal: completion.kind === "failed" || completion.kind === "aborted",
         publishMessage: (message, deliveryAuthorized) => {
-          publicationStarted = true;
+          publicationStarted = completion.kind === "progress";
           if (completion.kind === "progress") {
             const text = typeof message.text === "string" ? message.text : undefined;
             if (text) {
@@ -117,6 +120,10 @@ export function createChatSendLateReplyFinalizer(
               });
             }
           } else {
+            if (completion.kind === "completed") {
+              params.beforeCompletedPublication?.();
+            }
+            publicationStarted = true;
             const run = context.chatRunState.runs.get(runId);
             broadcastChatTerminal({
               ...broadcastParams,
@@ -146,6 +153,9 @@ export function createChatSendLateReplyFinalizer(
           !(run?.rawBuffer ?? run?.buffer ?? "").trim();
         if (completion.kind === "failed" || completion.kind === "aborted") {
           context.chatRunState.flushPendingText(runId);
+        }
+        if (completion.kind === "completed") {
+          params.beforeCompletedPublication?.();
         }
         publicationStarted = true;
         broadcastChatTerminal({
@@ -432,13 +442,13 @@ async function finalizeChatSendAgentReplyPayloads(
     if (params.publishMessage) {
       params.publishMessage(message, deliveryAuthorized);
     } else {
-      broadcastChatFinal({
-        context,
-        runId: clientRunId,
-        sessionKey,
-        agentId,
-        message,
-      });
+      const publish = () =>
+        broadcastChatFinal({ context, runId: clientRunId, sessionKey, agentId, message });
+      if (params.deferTerminalPublication) {
+        params.deferTerminalPublication(publish);
+      } else {
+        publish();
+      }
     }
   }
   return { kind: "delivered", hasSourceReplyTranscriptMirror };
@@ -461,6 +471,7 @@ export async function finalizeChatSendSourceReplies(
     inputs: selectChatSendAgentReplyInputs(params),
     session: params.session,
     suppressFinal: params.suppressFinal,
+    deferTerminalPublication: params.deferTerminalPublication,
   });
   return result.kind === "delivered" && result.hasSourceReplyTranscriptMirror;
 }

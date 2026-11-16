@@ -80,6 +80,7 @@ import {
   type EmbeddedRunWaiter,
   type EmbeddedAgentQueueFailureReason,
 } from "./run-state.js";
+import { revokeCompletionClaim } from "./runs.completion-claims.js";
 import {
   canSteerEmbeddedRunDuringCompaction,
   isEmbeddedRunHandleAbortable,
@@ -820,14 +821,6 @@ function prepareEmbeddedAgentQueueMessage(
   return { kind: "embedded_run", queueMessage: injection.queueMessage, options: backendOptions };
 }
 
-function revokeCompletionClaim(sessionId: string, runId?: string): void {
-  const claim = EMBEDDED_RUN_COMPLETION_CLAIMS.get(sessionId);
-  if (claim && (runId === undefined || claim.runId === runId)) {
-    claim.settleRegistration(undefined);
-    EMBEDDED_RUN_COMPLETION_CLAIMS.delete(sessionId);
-  }
-}
-
 /**
  * Abort embedded OpenClaw runs.
  *
@@ -837,11 +830,11 @@ function revokeCompletionClaim(sessionId: string, runId?: string): void {
 export function abortEmbeddedAgentRun(sessionId: string): boolean;
 export function abortEmbeddedAgentRun(
   sessionId: undefined,
-  opts: { mode: "all" | "compacting"; reason?: "restart" },
+  opts: { mode: "all" | "compacting"; reason?: "restart"; replyOwnedOnly?: boolean },
 ): boolean;
 export function abortEmbeddedAgentRun(
   sessionId?: string,
-  opts?: { mode?: "all" | "compacting"; reason?: "restart" },
+  opts?: { mode?: "all" | "compacting"; reason?: "restart"; replyOwnedOnly?: boolean },
 ): boolean {
   if (typeof sessionId === "string" && sessionId.length > 0) {
     const handle = ACTIVE_EMBEDDED_RUNS.get(sessionId);
@@ -877,6 +870,11 @@ export function abortEmbeddedAgentRun(
     onAbortError: (id, err) =>
       diag.warn(`abort failed: sessionId=${id} owner=reply_run err=${String(err)}`),
   });
+  // Bare adopted channel handles do not establish recoverable input custody.
+  // A stop may cancel reply-owned execution early, but must still join those handles.
+  if (opts?.replyOwnedOnly) {
+    return replyAborted;
+  }
   let aborted = false;
   for (const [id, handle] of ACTIVE_EMBEDDED_RUNS) {
     if (replyOwnedSessionIds.has(id) || !isEmbeddedRunHandleAbortable(id, handle, mode)) {

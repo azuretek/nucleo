@@ -32,6 +32,28 @@
   ],
   "patches": [
     {
+      "n": 30,
+      "pr": null,
+      "branch": "nucleo/stop-cancellation",
+      "subject": "cancel eligible stop work before bounded cleanup",
+      "featureOrFix": "stop cancels reply-owned execution before bounded cleanup while retaining adopted channel work and pending input; authenticated browser input completion prevents settled replay",
+      "tests": [
+        "src/cli/gateway-cli/run-loop-stop-cancellation.test.ts",
+        "src/gateway/server-methods/chat-send-stop-owner-custody.test.ts",
+        "src/gateway/server-methods/chat-send-stop-storage-recovery.test.ts",
+        "src/gateway/server-chat.agent-events.test.ts",
+        "src/auto-reply/reply/followup-runner.test.ts",
+        "src/config/sessions/session-accessor.pending-inputs-consumed.test.ts",
+        "src/sessions/user-turn-transcript.collected-completion.test.ts",
+        "src/gateway/server-close.test.ts",
+        "src/cli/gateway-cli/run-loop.test.ts",
+        "src/cli/gateway-cli/run-loop-shutdown-budget.test.ts",
+        "src/cli/gateway-cli/run-loop.direct-stop-active-work.process.test.ts",
+        "src/agents/embedded-agent-runner/runs.test.ts",
+        "src/gateway/server-methods/chat-send-pending-input-withdrawal.test.ts"
+      ]
+    },
+    {
       "n": 2,
       "pr": 163964,
       "branch": "fix/image-draft-snapshot",

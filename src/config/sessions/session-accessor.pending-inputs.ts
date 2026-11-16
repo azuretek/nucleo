@@ -85,6 +85,10 @@ export type SessionPendingInputReceipt = {
   complete?: (outcome: AgentRunTerminalOutcome) => AgentRunTerminalOutcome;
 };
 const receiptOwners = new WeakMap<SessionPendingInputReceipt, SessionPendingInputOwner>();
+const completionTransactions = new WeakMap<
+  SessionPendingInputReceipt,
+  <T>(operation: () => T) => T
+>();
 
 function ownerReceipt(owner: SessionPendingInputOwner): SessionPendingInputReceipt {
   const receipt: SessionPendingInputReceipt = {
@@ -163,7 +167,7 @@ export function bindSessionPendingInputSources(
     throw new Error("Collected input exceeds the Gateway payload limit");
   }
   const aggregateInputId = randomUUID();
-  return ownerReceipt({
+  const aggregate = ownerReceipt({
     ...first,
     inputId: aggregateInputId,
     transcriptInputId: aggregateInputId,
@@ -184,6 +188,25 @@ export function bindSessionPendingInputSources(
       }
     },
   });
+  const tracked = receipts.filter((receipt) => receipt.complete !== undefined);
+  const transaction = tracked[0] && completionTransactions.get(tracked[0]);
+  if (tracked.length > 0) {
+    if (!transaction || tracked.some((receipt) => !completionTransactions.has(receipt))) {
+      throw new Error("Collected completion requires admitted source transactions");
+    }
+    aggregate.complete = (outcome) =>
+      transaction(() => {
+        for (const receipt of tracked) {
+          const result = receipt.complete!(outcome);
+          if (result.status !== outcome.status || result.reason !== outcome.reason) {
+            throw new Error("Collected completion conflicts with a terminal source outcome");
+          }
+        }
+        return outcome;
+      });
+    completionTransactions.set(aggregate, transaction);
+  }
+  return aggregate;
 }
 
 /** Accept durable input without changing the active transcript or scheduling execution. */
@@ -442,6 +465,11 @@ export async function stageSessionPendingInput(
       const receipt = ownerReceipt(owner);
       if (complete) {
         receipt.complete = complete;
+        completionTransactions.set(receipt, (operation) =>
+          runOpenClawAgentWriteTransaction(operation, databaseOptions, {
+            operationLabel: "session.pending-input.record-collected-outcome",
+          }),
+        );
       }
       return receipt;
     },

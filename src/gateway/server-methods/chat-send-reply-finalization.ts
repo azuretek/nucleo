@@ -132,6 +132,7 @@ export async function finalizeChatSendDispatchedReplies(params: {
   runtimeOwnsTranscript?: boolean;
   state: "final" | "aborted";
   stopReason?: string;
+  deferTerminalPublication?: (publish: () => void) => void;
 }): Promise<void> {
   const {
     accountId,
@@ -145,6 +146,8 @@ export async function finalizeChatSendDispatchedReplies(params: {
   } = params;
   const { agentId, backingSessionId, cfg, clientRunId, sessionKey, sessionLoadOptions } = session;
   const stopReason = params.state === "aborted" ? "aborted" : "stop";
+  const publishTerminal = (publish: () => void) =>
+    params.deferTerminalPublication ? params.deferTerminalPublication(publish) : publish();
   const btwResult = buildChatSendBtwSideResult(deliveredReplies);
   if (btwResult) {
     broadcastSideResult({
@@ -158,12 +161,14 @@ export async function finalizeChatSendDispatchedReplies(params: {
         ts: Date.now(),
       },
     });
-    broadcastChatFinal({
-      context,
-      runId: clientRunId,
-      sessionKey,
-      agentId,
-    });
+    publishTerminal(() =>
+      broadcastChatFinal({
+        context,
+        runId: clientRunId,
+        sessionKey,
+        agentId,
+      }),
+    );
     return;
   }
 
@@ -193,7 +198,7 @@ export async function finalizeChatSendDispatchedReplies(params: {
     context.logGateway.warn(
       "webchat settled final reply skipped: session writer changed before finalization",
     );
-    broadcastChatFinal({ context, runId: clientRunId, sessionKey, agentId });
+    publishTerminal(() => broadcastChatFinal({ context, runId: clientRunId, sessionKey, agentId }));
     return;
   }
   const transcriptMirrorResolution = resolveTranscriptMirrorOwner(rawFinalPayloads);
@@ -326,7 +331,7 @@ export async function finalizeChatSendDispatchedReplies(params: {
     context.logGateway.warn(
       "webchat settled final reply skipped: session writer changed before transcript append",
     );
-    broadcastChatFinal({ context, runId: clientRunId, sessionKey, agentId });
+    publishTerminal(() => broadcastChatFinal({ context, runId: clientRunId, sessionKey, agentId }));
     return;
   }
   if (shouldAppendAssistantTranscript) {
@@ -395,7 +400,7 @@ export async function finalizeChatSendDispatchedReplies(params: {
     context.logGateway.warn(
       "webchat settled final reply skipped: session writer changed before broadcast",
     );
-    broadcastChatFinal({ context, runId: clientRunId, sessionKey, agentId });
+    publishTerminal(() => broadcastChatFinal({ context, runId: clientRunId, sessionKey, agentId }));
     return;
   }
   const run = context.chatRunState.runs.get(clientRunId);
@@ -407,13 +412,15 @@ export async function finalizeChatSendDispatchedReplies(params: {
   if (hasVisibleAssistantFinalMessage(message)) {
     emitFirstAssistantServerTiming();
   }
-  broadcastChatTerminal({
-    context,
-    runId: clientRunId,
-    sessionKey,
-    agentId,
-    message,
-    state: params.state,
-    stopReason: params.stopReason,
-  });
+  publishTerminal(() =>
+    broadcastChatTerminal({
+      context,
+      runId: clientRunId,
+      sessionKey,
+      agentId,
+      message,
+      state: params.state,
+      stopReason: params.stopReason,
+    }),
+  );
 }

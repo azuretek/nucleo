@@ -88,10 +88,18 @@ export async function drainGatewayActiveWork({
       ],
     );
   } else {
-    // Keep all process-owned work alive without spending the shutdown reserve
-    // that server teardown and the supervisor watchdog need.
+    // Cancel reply-owned execution first, preserving pending input with the
+    // restart disposition. Bare adopted handles lack durable input custody and
+    // must be joined before cancellation, as on the direct-stop channel path.
     try {
       markGatewayRestartTrace("stop.drain.begin");
+      markDraining(formatShutdownReason(request));
+      runtime.abortEmbeddedAgentRun(undefined, {
+        mode: "all",
+        reason: "restart",
+        replyOwnedOnly: true,
+      });
+      runtime.abortActiveCronTaskRuns("Gateway stopping.");
       const activeWorkDrain = await measureGatewayRestartTrace("stop.drain", () =>
         runtime.waitForGatewayActiveWork(drainTimeoutMs, {
           onSnapshot: reportDrainSnapshot,
@@ -101,13 +109,21 @@ export async function drainGatewayActiveWork({
         logger.warn(
           `gateway active-work drain timeout reached; proceeding with shutdown: ${formatDrainCounts(activeWorkDrain.snapshot)}`,
         );
-        runtime.abortEmbeddedAgentRun(undefined, { mode: "all" });
-        runtime.abortActiveCronTaskRuns("Gateway stopping.");
+        runtime.abortEmbeddedAgentRun(undefined, { mode: "all", reason: "restart" });
       }
     } catch (err) {
       logger.warn(
         `gateway active-work drain failed; proceeding with shutdown: ${formatErrorMessage(err)}`,
       );
+      // Failed inventory is no evidence that retained adopted work has settled.
+      // Cancel it best-effort before close joins cleanup, as on drain timeout.
+      try {
+        runtime.abortEmbeddedAgentRun(undefined, { mode: "all", reason: "restart" });
+      } catch (abortError) {
+        logger.warn(
+          `gateway remaining-work cancellation failed: ${formatErrorMessage(abortError)}`,
+        );
+      }
     }
     logger.info("active-work drain settled; beginning server close");
   }

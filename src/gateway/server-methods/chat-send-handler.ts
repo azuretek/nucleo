@@ -552,6 +552,10 @@ async function handleChatSendWithOptions(
           }
         : undefined;
     context.addChatRun(clientRunId, {
+      beforeTerminalPublication: (outcome) => {
+        activeRunAbort.controller.signal.throwIfAborted();
+        userTurnRecorder.completeProcessing?.(outcome);
+      },
       sessionKey,
       agentId: selectedAgent.agentId,
       clientRunId,

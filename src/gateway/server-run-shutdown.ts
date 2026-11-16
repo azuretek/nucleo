@@ -318,9 +318,12 @@ function abortActiveRuns(params: GatewayRunShutdownParams, restart: boolean): nu
     if (!isChatAbortControllerEntryAbortable(entry)) {
       continue;
     }
+    // Closing the Gateway is not a withdrawal of accepted chat input. Keep
+    // its retry custody even on stop; private agent RPCs retain stop semantics.
+    const preserveChatInput = restart || entry.kind !== "agent";
     if (entry.projectSessionActive === false) {
-      entry.abortStopReason = restart ? "restart" : "rpc";
-      entry.controller.abort(restart ? createAgentRunRestartAbortError() : undefined);
+      entry.abortStopReason = preserveChatInput ? "restart" : "rpc";
+      entry.controller.abort(preserveChatInput ? createAgentRunRestartAbortError() : undefined);
       removeChatAbortControllerEntry(params.chatAbortControllers, runId, entry);
       params.chatRunState.getOrCreate(runId).abortMarker = createChatAbortMarker();
       params.chatRunState.clearRun(runId);
@@ -335,7 +338,7 @@ function abortActiveRuns(params: GatewayRunShutdownParams, restart: boolean): nu
     const result = abortChatRunById(params, {
       runId,
       sessionKey: entry.sessionKey,
-      stopReason: restart ? "restart" : "rpc",
+      stopReason: preserveChatInput ? "restart" : "rpc",
     });
     if (result.aborted) {
       aborted += 1;
@@ -363,7 +366,9 @@ export async function prepareGatewayRunShutdown(
   // Ordinary CLI stop already spent its grace period. Cancel only this Gateway's
   // remaining owners before joining them, without scheduling restart recovery.
   if (!params.restart) {
-    abortQueuedTurns(params, false);
+    // Queued chat owners can outlive their active registration. Their signal
+    // must preserve input custody too, without enabling restart scheduling.
+    abortQueuedTurns(params, true);
     abortActiveRuns(params, false);
     return;
   }

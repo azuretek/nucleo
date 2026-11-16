@@ -1,5 +1,6 @@
 /** Composes queued admission, canonical execution, accounting, and delivery. */
 import {
+  buildAgentRunTerminalOutcome,
   buildAgentRunTerminalOutcomeFromLifecycleEvent,
   classifyAgentRunTerminalOutcome,
 } from "../../agents/agent-run-terminal-outcome.js";
@@ -182,6 +183,13 @@ export function createFollowupRunner(
       // before accounting/delivery so their failures cannot replay model or tool effects.
       disposition = { kind: "consumed" };
       completion = resolveFollowupCompletion(execution.execution.outcome);
+      if (completion.kind === "completed") {
+        turn.operation.abortSignal.throwIfAborted();
+        turn.queued.operatorAuthority?.assertCurrent();
+        turn.queued.userTurnTranscriptRecorder?.completeProcessing?.(
+          buildAgentRunTerminalOutcome({ status: "ok", stopReason: completion.stopReason }),
+        );
+      }
       try {
         await execution.progress.drain();
       } catch (error) {

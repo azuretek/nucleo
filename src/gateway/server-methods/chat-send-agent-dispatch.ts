@@ -4,8 +4,6 @@ import {
   GATEWAY_CLIENT_CAPS,
   hasGatewayClientCap,
 } from "../../../packages/gateway-protocol/src/client-info.js";
-import { ErrorCodes, errorShape } from "../../../packages/gateway-protocol/src/index.js";
-import { classifyAgentRunTerminalOutcome } from "../../agents/agent-run-terminal-outcome.js";
 import { resolveProviderIdForAuth } from "../../agents/provider-auth-aliases.js";
 import { dispatchInboundMessageWithProjectedDispatcher } from "../../auto-reply/dispatch.js";
 import type { ReplyDispatchRun } from "../../auto-reply/get-reply-options.types.js";
@@ -23,7 +21,7 @@ import { discardPreparedInboundMedia } from "../chat-attachments.js";
 import { chatRunBelongsToSelectedAgent } from "../chat-run-owner.js";
 import { tryResolveSessionCompatibilityOwnerAgentId } from "../session-request-agent.js";
 import { buildAbortedChatSendPayload } from "./chat-abort-authorization.js";
-import { broadcastChatDelta, broadcastChatError, broadcastChatFinal } from "./chat-broadcast.js";
+import { broadcastChatDelta, broadcastChatFinal } from "./chat-broadcast.js";
 import type { StartChatDispatchParams } from "./chat-send-agent-dispatch.types.js";
 import {
   resolveWebchatPromptCacheKey,
@@ -35,6 +33,12 @@ import {
   formatReturnedAgentErrors,
 } from "./chat-send-dispatch-errors.js";
 import { finalizeAcceptedChatSendMessageInjection } from "./chat-send-message-injection.js";
+import {
+  resolveChatSendRuntimeClassification,
+  createChatSendInputCompletion,
+  publishChatSendProcessingCompletion,
+  publishChatSendFailure,
+} from "./chat-send-processing-completion.js";
 import { applyChatSendReplyContextFields } from "./chat-send-reply-context.js";
 import { createChatSendReplyDispatch } from "./chat-send-reply-dispatch.js";
 import { finalizeChatSendDispatchedReplies } from "./chat-send-reply-finalization.js";
@@ -183,6 +187,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
     hasCronCreatorAuthority: cronCreatorAuthority !== undefined,
     suppressReplies: progressRefresh,
     retainWorkAdmission: retainGatewayWorkAdmission,
+    completeInput: createChatSendInputCompletion(userTurnRecorder),
     armOperatorRunCancellation: admission.armOperatorRunCancellation,
     retireOperatorRunCancellation: admission.retireOperatorRunCancellation,
   });
@@ -509,20 +514,17 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
       }
       emitServerTiming("dispatch-completed", undefined, dispatchStartedAtMs);
       const postDispatchStartedAtMs = performance.now();
+      const terminalPublications: Array<() => void> = [];
       await measureDiagnosticsTimelineSpan(
         "gateway.chat_send.post_dispatch",
         async () => {
           const replyDispatchResult = replyDispatchRun?.getResult();
           const runtimeOutcome = replyDispatchResult?.terminalOutcome;
-          const recordedOutcome = readAgentRunTerminalOutcome(dispatchResult);
-          // ACP owns a rich terminal result; native runs record their outcome on dispatch.
-          // Delivered warnings or source replies cannot replace either authoritative result.
-          const runtimeClassification = runtimeOutcome
-            ? classifyAgentRunTerminalOutcome(runtimeOutcome)
-            : recordedOutcome && (recordedOutcome === "failed" ? "failure" : "success");
-          const runtimeCancelled = runtimeClassification === "cancellation";
-          const runtimeFailed =
-            runtimeClassification === "failure" || runtimeClassification === "timeout";
+          const { runtimeClassification, runtimeCancelled, runtimeFailed } =
+            resolveChatSendRuntimeClassification(
+              runtimeOutcome,
+              readAgentRunTerminalOutcome(dispatchResult),
+            );
           const returnedAgentErrorPayloads = replyDispatch.deliveredReplies
             .map((entryInner) => readChatSendReplyPayload(entryInner.input))
             .filter((payload) => payload.isError);
@@ -578,6 +580,7 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
               emitFirstAssistantServerTiming,
               foldCommandBlocks: isInternalTextSlashCommandTurn || replyDispatchRun !== undefined,
               persistUserTurnTranscript: persistGatewayUserTurnTranscriptBestEffort,
+              deferTerminalPublication: (publish) => terminalPublications.push(publish),
               session,
               suppressReplies: !replyDispatchRun && replyDispatch.hasAppendedWebchatAgentMedia(),
               // Bound ACP writes its own transcript; the dashboard still needs its reply.
@@ -600,28 +603,30 @@ export function startChatDispatch(params: StartChatDispatchParams): void {
               hasReturnedAgentErrorPayloads: hasReturnedAgentError,
               session,
               suppressFinal: runtimeFailed,
+              deferTerminalPublication: (publish) => terminalPublications.push(publish),
             });
           }
           const shouldBroadcastAgentError =
             hasReturnedAgentError && (runtimeFailed || !finalizedSourceReply);
+          publishChatSendProcessingCompletion({
+            aborted: activeRunAbort.controller.signal.aborted,
+            failed: hasReturnedAgentError || runtimeFailed,
+            cancelled: runtimeCancelled,
+            queued: queuedFollowup.isEnqueued(),
+            recorder: userTurnRecorder,
+            outcome: runtimeOutcome,
+            publications: terminalPublications,
+          });
           if (!context.chatRunState.hasAbortMarker(clientRunId)) {
-            if (shouldBroadcastAgentError) {
-              broadcastChatError({
-                context,
-                runId: clientRunId,
-                sessionKey,
-                agentId,
-                errorMessage: returnedAgentErrorMessage,
-                errorKind: runtimeClassification === "timeout" ? "timeout" : undefined,
-                stopReason: runtimeOutcome?.stopReason,
-              });
-            }
-            const returnedAgentError = shouldBroadcastAgentError
-              ? errorShape(
-                  ErrorCodes.UNAVAILABLE,
-                  returnedAgentErrorMessage ?? "agent returned an error payload",
-                )
-              : undefined;
+            const returnedAgentError = publishChatSendFailure(shouldBroadcastAgentError, {
+              context,
+              runId: clientRunId,
+              sessionKey,
+              agentId,
+              errorMessage: returnedAgentErrorMessage,
+              errorKind: runtimeClassification === "timeout" ? "timeout" : undefined,
+              stopReason: runtimeOutcome?.stopReason,
+            });
             setGatewayDedupeEntry({
               dedupe: context.dedupe,
               key: `chat:${clientRunId}`,
