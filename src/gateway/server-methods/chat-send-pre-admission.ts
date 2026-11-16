@@ -42,6 +42,11 @@ import {
   ACTIVE_LEAF_CHANGED_ERROR_REASON,
   assertExpectedLeafActive,
 } from "./chat-send-active-leaf.js";
+import {
+  chatRequestConflictError,
+  resolveChatSendInputRequestFingerprint,
+  respondDurableInputCompletion,
+} from "./chat-send-input-retry.js";
 import type { NormalizedChatSendRequest } from "./chat-send-request.js";
 import {
   captureAdmittedChatSendSessionSettings,
@@ -174,14 +179,7 @@ export function resolveChatSendRequestConflict({
     context.dedupe.get(`chat:${session.clientRunId}`),
     context.dedupe.get(session.pendingChatSendKey),
   ];
-  const conflict = (unverifiable = false) =>
-    errorShape(
-      ErrorCodes.INVALID_REQUEST,
-      unverifiable
-        ? "The previous mention selections cannot be verified. Check the conversation history and use a new message ID to send again."
-        : "This message ID was already used for different input. Check the conversation history and use a new message ID to send again.",
-      { details: { reason: "chat-request-conflict" } },
-    );
+  const conflict = chatRequestConflictError;
   if (
     entries.some(
       (entry) =>
@@ -632,6 +630,11 @@ export async function runChatSendPreAdmission(
     cfg,
     clientRunId,
     entry: durableEntry,
+    inputCompletion: {
+      agentId: session.agentId,
+      requestFingerprint: (sessionId) =>
+        resolveChatSendInputRequestFingerprint({ client, request, sessionId }),
+    },
     persistedSessionKey: legacyKey ?? sessionKey,
     reloadEntry: () => loadSessionEntry(sessionLoadKey, sessionLoadOptions).entry,
     storePath,
@@ -673,6 +676,14 @@ export async function runChatSendPreAdmission(
           runId: clientRunId,
         });
       }
+      return false;
+    }
+    if (durableClaim.completion) {
+      respondDurableInputCompletion({
+        completion: durableClaim.completion,
+        respond,
+        runId: clientRunId,
+      });
       return false;
     }
     // An active source claim or terminal tombstone proves the durable turn

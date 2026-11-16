@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
 import { runAgentHarnessBeforeMessageWriteHook } from "../../agents/harness/hook-helpers.js";
 import { normalizeMessageClientSources } from "../../chat/message-client-source.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
@@ -19,6 +17,7 @@ import { formatForLog } from "../ws-log.js";
 import { hasGatewayAdminScope } from "./chat-origin-routing.js";
 import { buildRestartSafeChatTranscriptState } from "./chat-restart-recovery.js";
 import type { AdmittedChatSend } from "./chat-send-admission.js";
+import { resolveChatSendInputRequestFingerprint } from "./chat-send-input-retry.js";
 import {
   resolveChatSendReplyContext,
   type ChatSendReplyContextFields,
@@ -107,24 +106,11 @@ export function createGatewayChatUserTurnController(params: {
       }))
     : Promise.resolve(baseInput);
   let contextFreeCommand = false;
-  // Attribution and submitted bytes survive reconnect; display names, leaf
-  // cursors and generated media paths are not immutable request identity.
-  const pendingInputRequestFingerprint =
-    sender?.id && !request.goalOperation
-      ? createHash("sha256")
-          .update(
-            stableStringify([
-              {
-                ...request.p,
-                sessionId: admission.sessionBinding.sessionId,
-                expectedLeafEntryId: undefined,
-              },
-              sender.identity ?? sender.id,
-              hasGatewayAdminScope(params.client),
-            ]),
-          )
-          .digest("hex")
-      : undefined;
+  const pendingInputRequestFingerprint = resolveChatSendInputRequestFingerprint({
+    client: params.client,
+    request,
+    sessionId: admission.sessionBinding.sessionId,
+  });
   // Reuse the authenticated request fingerprint and transactional completion owner.
   // Transcript promotion alone is not terminal processing: direct custody is deleted.
   const trackInputCompletion = Boolean(
