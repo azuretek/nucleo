@@ -13,6 +13,7 @@ import {
 } from "../../sessions/user-turn-transcript.js";
 import type { UserTurnOriginalInputCommit } from "../../sessions/user-turn-transcript.types.js";
 import { extractTextFromChatContent } from "../../shared/chat-content.js";
+import { isBrowserOperatorUiClient } from "../../utils/message-channel.js";
 import type { MentionInbox } from "../mention-inbox.types.js";
 import { formatForLog } from "../ws-log.js";
 import { hasGatewayAdminScope } from "./chat-origin-routing.js";
@@ -107,6 +108,14 @@ export function createGatewayChatUserTurnController(params: {
     : Promise.resolve(baseInput);
   let contextFreeCommand = false;
   const recorder: UserTurnTranscriptRecorder = createUserTurnTranscriptRecorder({
+    // Reuse the authenticated request fingerprint and transactional completion owner.
+    // Transcript promotion alone is not terminal processing: direct custody is deleted.
+    trackInputCompletion: Boolean(
+      senderProfileId &&
+      !params.client?.internal?.syntheticClient &&
+      isBrowserOperatorUiClient(params.client?.connect.client) &&
+      !request.goalOperation,
+    ),
     ...(sender?.id && !request.goalOperation
       ? {
           // Attribution and submitted bytes survive reconnect; display names, leaf

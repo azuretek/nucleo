@@ -4,6 +4,7 @@ import type { AgentPlanStep } from "../channels/streaming.js";
 import type { AgentEventPayload } from "../infra/agent-events.js";
 import { mergeAssistantText, type AssistantTextSnapshot } from "./agent-event-assistant-text.js";
 import type { ChatCanvasBlock } from "./chat-display-projection.canvas.js";
+import type { ChatRunRegistration } from "./chat-run-registration.js";
 import {
   capLiveAssistantText,
   createLiveAssistantTextProjection,
@@ -12,20 +13,7 @@ import {
 import type { ChatRunProgressSnapshot } from "./server-chat-progress-snapshot.js";
 import { updateChatRunProgressSnapshot } from "./server-chat-progress-snapshot.js";
 
-export type ChatRunTiming = {
-  ackedAtMs: number;
-  connId: string;
-  dispatchStartedAtMs?: number;
-  firstAssistantEventSent?: boolean;
-  receivedAtMs: number;
-};
-
-export type ChatRunRegistration = {
-  sessionKey: string;
-  agentId?: string;
-  clientRunId: string;
-  chatSendTiming?: ChatRunTiming;
-};
+export type { ChatRunRegistration, ChatRunTiming } from "./chat-run-registration.js";
 
 export type ChatRunEntry = ChatRunRegistration & {
   registeredSequence: number;

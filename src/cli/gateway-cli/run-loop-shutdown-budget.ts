@@ -10,6 +10,8 @@ import { readLaunchdStopTimeout } from "../../infra/launchd-stop-timeout.js";
 import { readSystemdStopTimeout } from "../../infra/systemd-stop-timeout.js";
 import type { GatewayRunSignalAction } from "./run-loop-request.js";
 
+const GATEWAY_STOP_CLEANUP_TIMEOUT_MS = 30_000;
+
 type NativeStopTimeout = { timeoutMs: number; source: string };
 
 /**
@@ -171,7 +173,7 @@ export function resolveGatewayShutdownDrainBudget(params: {
         : Math.max(0, (restartDrainDeadlineAt ?? Date.now()) - Date.now()),
     drainTimeoutMs: isRestart
       ? restartDrainTimeoutMs
-      : Math.max(0, budget.timeoutMs - budget.reserveMs),
+      : Math.min(GATEWAY_STOP_CLEANUP_TIMEOUT_MS, Math.max(0, budget.timeoutMs - budget.reserveMs)),
     // A supervisor SIGTERM owns the stop deadline. Its shorter drain request
     // must not discard time still available for checkpointing and native close.
     forceExitMs:
