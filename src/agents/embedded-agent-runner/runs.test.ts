@@ -124,6 +124,17 @@ describe("embedded-agent runner run registry", () => {
     expect(isEmbeddedAgentRunAbortableForCompaction("session-reply-run")).toBe(true);
   });
 
+  it("leaves bare adopted handles alive during early stop cancellation", () => {
+    const abort = vi.fn();
+    setActiveEmbeddedRun("bare-adopted-stop", createEmbeddedRunHandle({ abort }));
+    expect(
+      abortEmbeddedAgentRun(undefined, { mode: "all", reason: "restart", replyOwnedOnly: true }),
+    ).toBe(false);
+    expect(abort).not.toHaveBeenCalled();
+    expect(abortEmbeddedAgentRun(undefined, { mode: "all", reason: "restart" })).toBe(true);
+    expect(abort).toHaveBeenCalledExactlyOnceWith("restart");
+  });
+
   it("aborts every active run in all mode", () => {
     const abortA = vi.fn();
     const abortB = vi.fn();

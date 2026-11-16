@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDeferred } from "../../../test/helpers/promise.js";
+import { abortEmbeddedAgentRun } from "../../agents/embedded-agent-runner/runs.js";
 import { registerAgentSessionLoopTestLifecycle } from "../../agents/sessions/agent-session-loop-correctness.test-support.js";
 import type { dispatchInboundMessage } from "../../auto-reply/dispatch.js";
 import {
@@ -12,6 +13,7 @@ import {
   retireFollowupRunCancellation,
 } from "../../auto-reply/reply/queue/lifecycle.js";
 import { clearFollowupQueue } from "../../auto-reply/reply/queue/state.js";
+import { drainGatewayActiveWork } from "../../cli/gateway-cli/run-loop-drain.js";
 import { listSessionPendingInputs } from "../../config/sessions/session-accessor.pending-inputs.js";
 import { listSessionPendingInputReceipts } from "../../config/sessions/session-accessor.sqlite-pending-input-receipts.js";
 import { loadTranscriptEventsSync } from "../../config/sessions/session-accessor.sqlite-read.js";
@@ -33,6 +35,85 @@ registerAgentSessionLoopTestLifecycle();
 const createBrowserFollowupFixture = useBrowserFollowupFixture();
 
 describe("queued chat input withdrawal", () => {
+  it("retains accepted browser input when stop cancels before the cleanup join", async () => {
+    const fixture = await createBrowserFollowupFixture();
+    try {
+      await fixture.send();
+      await fixture.dispatchedRecorder;
+      const original = listSessionPendingInputs(fixture.scope).items[0];
+      expect(original).toBeDefined();
+      let cancelled = false;
+      const warn = vi.fn();
+      // Dispatch is paused by this fixture rather than a native provider. Wire
+      // its backend cancellation into the admitted browser turn's real abort
+      // owner, so releasing the stub cannot falsely report successful execution.
+      const cancel = vi.fn((reason: "restart" | "user_abort" | "superseded") => {
+        expect(
+          abortChatRunById(createChatAbortOps(fixture.context), {
+            runId: fixture.params.idempotencyKey,
+            sessionKey: fixture.scope.sessionKey,
+            stopReason: reason === "restart" ? "restart" : "rpc",
+          }).aborted,
+        ).toBe(true);
+      });
+      fixture.activeRun?.attachBackend({ kind: "embedded", cancel });
+      fixture.activeRun?.setPhase("running");
+      const runtime = {
+        abortEmbeddedAgentRun: (
+          sessionId: undefined,
+          options: { mode: "all"; reason?: "restart" },
+        ) => {
+          const result = abortEmbeddedAgentRun(sessionId, options);
+          expect(result).toBe(true);
+          expect(cancel).toHaveBeenCalledWith("restart");
+          expect(fixture.activeRun?.result).toEqual({
+            kind: "aborted",
+            code: "aborted_for_restart",
+          });
+          cancelled = true;
+          return result;
+        },
+        abortActiveCronTaskRuns: () => 0,
+        listActiveEmbeddedRunSessionIds: () => [],
+        getDiagnosticSessionActivitySnapshot: () => undefined,
+        waitForGatewayActiveWork: async () => {
+          expect(cancelled).toBe(true);
+          await fixture.finishDispatch();
+          expect(listSessionPendingInputs(fixture.scope).items).toEqual([
+            { ...original, state: "interrupted" },
+          ]);
+          expect(
+            listSessionPendingInputReceipts(fixture.scope, {
+              runIds: [fixture.params.idempotencyKey],
+            }),
+          ).toEqual([{ runId: fixture.params.idempotencyKey, state: "pending" }]);
+          return { drained: true };
+        },
+      };
+      await drainGatewayActiveWork({
+        request: { action: "stop", signal: "SIGTERM", acceptedAtMs: 0 },
+        runtime: runtime as unknown as typeof import("../../cli/gateway-cli/lifecycle.runtime.js"),
+        drainTimeoutMs: 30_000,
+        restartDrainDeadlineAt: undefined,
+        markDraining: () => {},
+        recordCounts: () => {},
+        recordWarning: () => {},
+        logger: { info: () => {}, warn },
+      });
+      expect(warn).not.toHaveBeenCalled();
+      expect(cancelled).toBe(true);
+      expect(
+        listSessionPendingInputReceipts(fixture.scope, { runIds: [fixture.params.idempotencyKey] }),
+      ).toEqual([{ runId: fixture.params.idempotencyKey, state: "pending" }]);
+      expect(listSessionPendingInputs(fixture.scope).items).toEqual([
+        { ...original, state: "interrupted" },
+      ]);
+      expect(loadTranscriptEventsSync(fixture.scope)).toEqual(fixture.activeTranscript);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it.each([
     { target: "admitted", stopReason: "timeout", reason: "timeout", discardPendingInput: false },
     { target: "queued", stopReason: "stop", reason: "stop", discardPendingInput: false },

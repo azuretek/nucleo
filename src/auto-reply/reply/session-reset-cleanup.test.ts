@@ -89,11 +89,7 @@ describe("clearSessionResetRuntimeState", () => {
       }),
     ).toBeDefined();
 
-    clearSessionResetRuntimeState(["alpha"], {
-      agentId: "main",
-      sessionKey: "alpha",
-      assertCurrent: () => {},
-    });
+    clearSessionResetRuntimeState(["alpha"], { agentId: "main" });
 
     // The reset conversation's next turn leases nothing stale.
     expect(
