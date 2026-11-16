@@ -97,6 +97,7 @@ function createTurn(
   result: AdmittedFollowupTurn["operation"]["result"] = null,
 ) {
   const operation = {
+    abortSignal: new AbortController().signal,
     result,
     complete: vi.fn(() => order.push("operation-complete")),
     fail: vi.fn(() => order.push("operation-failed")),
@@ -817,3 +818,74 @@ describe("createFollowupRunner", () => {
     expect(onObservedReplyDelivery).toHaveBeenCalledOnce();
   });
 });
+
+it("commits the execution recorder before terminal delivery and lifecycle release", async () => {
+  const order: string[] = [];
+  const turn = createTurn();
+  const completeProcessing = vi.fn(() => {
+    order.push("durable-completion");
+  });
+  turn.queued.userTurnTranscriptRecorder = { completeProcessing } as unknown as NonNullable<
+    FollowupRun["userTurnTranscriptRecorder"]
+  >;
+  turn.queued.queuedFollowupReplyDisposition = {
+    kind: "deliver",
+    deliver: async () => {
+      order.push("terminal-delivery");
+    },
+  };
+  state.admit.mockResolvedValue({ kind: "admitted", turn });
+  state.execute.mockResolvedValue(createSettledExecution());
+  state.completeLifecycle.mockImplementation(() => order.push("lifecycle-release"));
+  await createFollowupRunner({
+    typing: createTypingController(),
+    typingMode: "instant",
+    defaultModel: "claude",
+  })(turn.queued);
+  expect(completeProcessing).toHaveBeenCalledOnce();
+  expect(order).toEqual(["durable-completion", "terminal-delivery", "lifecycle-release"]);
+});
+
+it.each(["failed", "cancelled", "restart", "revoked", "write-error"] as const)(
+  "does not publish followup success across %s",
+  async (boundary) => {
+    const turn = createTurn();
+    const completeProcessing = vi.fn(() => {
+      if (boundary === "write-error") {
+        throw new Error("required completion unavailable");
+      }
+    });
+    turn.queued.userTurnTranscriptRecorder = { completeProcessing } as unknown as NonNullable<
+      FollowupRun["userTurnTranscriptRecorder"]
+    >;
+    const terminalDelivery = vi.fn();
+    turn.queued.queuedFollowupReplyDisposition = { kind: "deliver", deliver: terminalDelivery };
+    const execution = boundary === "failed" ? createRejectedExecution() : createSettledExecution();
+    if (boundary === "cancelled" || boundary === "restart") {
+      execution.execution.outcome = {
+        kind: "aborted",
+        reason: boundary === "cancelled" ? "user" : "restart",
+      };
+    }
+    if (boundary === "revoked") {
+      turn.queued.operatorAuthority = {
+        profileId: "revoked-followup-profile",
+        scopes: [],
+        assertCurrent: () => {
+          throw new Error("operator authority revoked");
+        },
+      };
+    }
+    state.admit.mockResolvedValue({ kind: "admitted", turn });
+    state.execute.mockResolvedValue(execution);
+    await createFollowupRunner({
+      typing: createTypingController(),
+      typingMode: "instant",
+      defaultModel: "claude",
+    })(turn.queued);
+    expect(completeProcessing).toHaveBeenCalledTimes(boundary === "write-error" ? 1 : 0);
+    expect(terminalDelivery).toHaveBeenCalledOnce();
+    expect(terminalDelivery.mock.calls[0]?.[0].completion.kind).not.toBe("completed");
+    expect(state.completeLifecycle).toHaveBeenCalledOnce();
+  },
+);

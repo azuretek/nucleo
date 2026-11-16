@@ -164,13 +164,15 @@ export function useBrowserFollowupFixture() {
       }
       return respond;
     };
-    const finishDispatch = async () => {
+    const finishDispatch = async (finishOptions: { completeActiveRun?: boolean } = {}) => {
       const completion = getSessionWorkAdmissionRelease({
         scope: storePath,
         identities: [scope.sessionKey, scope.sessionId],
       });
       dispatchRelease.resolve();
-      activeRun?.complete();
+      if (finishOptions.completeActiveRun !== false) {
+        activeRun?.complete();
+      }
       await completion;
     };
     return {

@@ -184,7 +184,9 @@ export function registerShutdownBudgetTests({
               nativeStopBudget: true,
             });
             expect(waitForGatewayActiveWork).toHaveBeenCalledWith(
-              stopTimeoutMs - 15_000 - inspectionMs,
+              signal === "SIGTERM"
+                ? Math.min(30_000, stopTimeoutMs - 15_000 - inspectionMs)
+                : stopTimeoutMs - 15_000 - inspectionMs,
               expect.any(Object),
             );
             const budgetLogs = gatewayLog.info.mock.calls
