@@ -229,7 +229,9 @@ export function prepareChatSendSession(params: {
       isBrowserOperatorUiClient(request.clientInfo) &&
       turnKind === "main" &&
       normalizedAttachments.length === 0 &&
-      !request.reconnectResumeRequested &&
+      (!request.reconnectResumeRequested ||
+        (entry?.restartRecoveryDeliverySourceRunId === loadedValue.clientRunId &&
+          typeof entry.restartRecoveryDeliveryRequestFingerprint === "string")) &&
       explicitOrigin === undefined &&
       p.deliver !== true &&
       p.thinking === undefined &&
