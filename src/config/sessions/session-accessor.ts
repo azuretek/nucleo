@@ -6,6 +6,7 @@
  */
 export * from "./session-history.js";
 export { listSessionPendingInputReceipts } from "./session-accessor.sqlite-pending-input-receipts.js";
+export { readSessionInputCompletionForRetry } from "./session-accessor.input-completion-retry.js";
 export {
   bindSessionPendingInputSources,
   listSessionPendingInputs,
