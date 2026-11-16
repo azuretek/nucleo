@@ -7,6 +7,17 @@ import {
 import type { UserTurnTranscriptRecorder } from "../../sessions/user-turn-transcript.js";
 import { broadcastChatError } from "./chat-broadcast.js";
 
+/** A released owner already recorded interruption or cancellation; recovery, not this run, finishes it. */
+export function completeChatSendProcessing(
+  recorder: UserTurnTranscriptRecorder,
+  outcome: AgentRunTerminalOutcome,
+): AgentRunTerminalOutcome | undefined {
+  if (recorder.isPendingInputReleased?.()) {
+    return undefined;
+  }
+  return recorder.completeProcessing?.(outcome);
+}
+
 /** Processing custody commits before any terminal publication; interrupted or queued work stays recoverable. */
 export function publishChatSendProcessingCompletion(params: {
   aborted: boolean;
@@ -18,7 +29,8 @@ export function publishChatSendProcessingCompletion(params: {
   publications: readonly (() => void)[];
 }) {
   if (!params.aborted && !params.failed && !params.cancelled && !params.queued) {
-    params.recorder.completeProcessing?.(
+    completeChatSendProcessing(
+      params.recorder,
       params.outcome ?? buildAgentRunTerminalOutcome({ status: "ok" }),
     );
   }
@@ -44,7 +56,7 @@ export function resolveChatSendRuntimeClassification(
 
 export function createChatSendInputCompletion(recorder: UserTurnTranscriptRecorder): () => void {
   return () => {
-    recorder.completeProcessing?.(buildAgentRunTerminalOutcome({ status: "ok" }));
+    completeChatSendProcessing(recorder, buildAgentRunTerminalOutcome({ status: "ok" }));
   };
 }
 
