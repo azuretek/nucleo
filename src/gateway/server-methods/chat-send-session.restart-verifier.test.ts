@@ -25,7 +25,7 @@ function prepare(fixture: Fixture, params: Record<string, unknown>, client = fix
     context: fixture.context,
   });
   if (!prepared.ok) {
-    throw new Error(String(prepared.error));
+    throw new Error(JSON.stringify(prepared.error));
   }
   return { request: normalized.value, session: prepared.value };
 }
