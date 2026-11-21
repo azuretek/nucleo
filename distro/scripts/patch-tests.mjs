@@ -76,9 +76,26 @@ for (const p of patches) {
   // suite silently, which is indistinguishable from "still working" and wastes the run.
   const PER_PATCH_MS = 10 * 60 * 1000;
   const nodeTests = files.every((file) => file.startsWith("distro/") && file.endsWith(".test.mjs"));
+  // ★ Upstream test files run through the checkout's own test runner, the command `pnpm test`
+  // runs, never bare Vitest. The runner routes each file to the config that owns it and prepares
+  // the compiled workers some tests require; under bare Vitest those tests fail for want of a
+  // runtime they never run without, which reads as a broken patch.
+  const repoRunner = ["scripts/tsx.mjs", "scripts/test-projects.mts"];
+  if (!nodeTests && !repoRunner.every((file) => existsSync(join(checkout, file)))) {
+    console.log(
+      String(p.n).padStart(2) +
+        " " +
+        p.branch.padEnd(46) +
+        " FAIL  this tree has no repository test runner (" +
+        repoRunner.join(", ") +
+        ")",
+    );
+    missing.push(p.branch + " (no test runner)");
+    continue;
+  }
   const r = spawnSync(
-    nodeTests ? process.execPath : "pnpm",
-    nodeTests ? ["--test", ...files] : ["exec", "vitest", "run", ...files],
+    process.execPath,
+    nodeTests ? ["--test", ...files] : ["--import", "./" + repoRunner[0], repoRunner[1], ...files],
     {
       cwd: checkout,
       encoding: "utf8",
