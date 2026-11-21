@@ -82,7 +82,7 @@ describe("restart recovery terminal publication", () => {
   it.each([false, true])(
     "publishes the recovery final only after its lifecycle commit settles (write fails=%s)",
     async (writeFails) => {
-      const persistence = createDeferred<void>();
+      const persistence = createDeferred();
       persist.mockReturnValue(persistence.promise);
       const h = createHarness();
       registerAgentRunContext("recovery-run", { sessionKey: "session-recovery" });
@@ -104,7 +104,7 @@ describe("restart recovery terminal publication", () => {
   );
 
   it("keeps a non-recovery final synchronous", () => {
-    const persistence = createDeferred<void>();
+    const persistence = createDeferred();
     persist.mockReturnValue(persistence.promise);
     const h = createHarness();
     registerAgentRunContext("ordinary-run", { sessionKey: "session-recovery" });
