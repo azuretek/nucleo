@@ -35,6 +35,7 @@
       "n": 34,
       "pr": null,
       "branch": "nucleo/stop-cancellation",
+      "runner": "repo",
       "subject": "cancel eligible stop work before bounded cleanup",
       "featureOrFix": "stop cancels reply-owned execution before bounded cleanup while retaining adopted channel work and pending input; authenticated browser input completion prevents settled replay",
       "tests": [
