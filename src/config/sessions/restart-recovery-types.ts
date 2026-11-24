@@ -68,6 +68,16 @@ export type RestartRecoveryTerminalDeliveryEvidence =
     transcriptRunId?: string;
   };
 
+/** Original tracked input still owed its completion row by an adopting recovery. */
+export type RestartRecoveryInputCompletion = {
+  sourceRunId: string;
+  sessionId: string;
+  idempotencyKey: string;
+  requestHash: string;
+  /** Admitting process generation; only a later process is an adopting recovery. */
+  lifecycleGeneration: string;
+};
+
 /** Durable ownership and idempotency state for gateway restart recovery. */
 export type SessionRestartRecoveryState = {
   restartRecoveryBeforeAgentReplyState?: RestartRecoveryBeforeAgentReplyState;
@@ -93,4 +103,5 @@ export type SessionRestartRecoveryState = {
   restartRecoverySourceReplyDeliveryMode?: SourceReplyDeliveryMode;
   restartRecoveryTerminalDeliveryEvidence?: RestartRecoveryTerminalDeliveryEvidence[];
   restartRecoveryTerminalRunIds?: string[];
+  restartRecoveryInputCompletion?: RestartRecoveryInputCompletion;
 };

@@ -51,6 +51,7 @@ import {
   createChatSendMessageInjectionStarter,
   settleChatSendPreAckMessageInjection,
 } from "./chat-send-message-injection.js";
+import { completeChatSendProcessing } from "./chat-send-processing-completion.js";
 import { applyChatSendReplyContextFields } from "./chat-send-reply-context.js";
 import { prepareAndAdmitChatSend } from "./chat-send-setup.js";
 import { prepareChatSendUserTurn } from "./chat-send-user-turn.js";
@@ -552,6 +553,10 @@ async function handleChatSendWithOptions(
           }
         : undefined;
     context.addChatRun(clientRunId, {
+      beforeTerminalPublication: (outcome) => {
+        activeRunAbort.controller.signal.throwIfAborted();
+        completeChatSendProcessing(userTurnRecorder, outcome);
+      },
       sessionKey,
       agentId: selectedAgent.agentId,
       clientRunId,

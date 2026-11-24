@@ -208,6 +208,8 @@ export type UserTurnTranscriptRecorder = {
   }) => Promise<boolean>;
   getProcessingCompletion?: () => AgentRunTerminalOutcome | undefined;
   completeProcessing?: (outcome: AgentRunTerminalOutcome) => AgentRunTerminalOutcome | undefined;
+  /** The admitted input's owner already recorded a terminal disposition. */
+  isPendingInputReleased?: () => boolean;
   getPendingInputMessage?: () => PersistedUserTurnMessage | undefined;
   isPendingInputConsumed?: () => boolean;
   withPendingInput?: <T>(run: () => T) => T;

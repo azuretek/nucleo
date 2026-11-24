@@ -136,6 +136,7 @@ const SESSION_ENTRY_RESERVED_SLOT_KEY_LIST = [
   "restartRecoveryDisableMessageTool",
   "restartRecoverySuppressTextDelivery",
   "restartRecoveryDeliveryRequestFingerprint",
+  "restartRecoveryInputCompletion",
   "restartRecoveryDeliveryRunId",
   "restartRecoveryDeliverySourceRunId",
   "restartRecoveryBeforeAgentReplyState",

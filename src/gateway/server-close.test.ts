@@ -44,6 +44,7 @@ import { createDeferredCore } from "../shared/deferred.js";
 import { resolveGlobalMap, resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { createTestGatewayScheduler } from "../test-utils/gateway-scheduler-clock.js";
 import { killPidIfAlive } from "../test-utils/process-tree.js";
+import { registerOrdinaryStopRunCancellationTests } from "./server-close-run-cancellation.test-support.js";
 import {
   createGatewayCloseTestDepsFactory,
   createGatewayCloseTestHandlerFactory,
@@ -1397,7 +1398,6 @@ describe("createGatewayCloseHandler", () => {
     assert(deps.maintenance);
     const { stopPeriodicTasks } = deps.maintenance;
     const close = createGatewayCloseHandler(deps);
-
     const closePromise = close({ reason: "test shutdown" });
     try {
       await vi.advanceTimersByTimeAsync(GATEWAY_SHUTDOWN_HOOK_TIMEOUT_MS);
@@ -1938,42 +1938,9 @@ describe("createGatewayCloseHandler", () => {
     ).toBe(true);
   });
 
-  it("cancels remaining runs after ordinary shutdown grace without restart recovery", async () => {
-    const controller = new AbortController();
-    const chatAbortControllers = new Map([
-      [
-        "run-1",
-        {
-          controller,
-          sessionId: "run-1",
-          sessionKey: "session-1",
-          startedAtMs: Date.now(),
-          expiresAtMs: Date.now() + 60_000,
-        },
-      ],
-    ]);
-    const getPendingReplyCount = vi.fn(() => 1);
-    const markMainSessionsAbortedForRestart = vi.fn<MarkMainSessionsAbortedForRestart>();
-    const deps = createGatewayCloseTestDeps({
-      chatAbortControllers,
-      getPendingReplyCount,
-      markMainSessionsAbortedForRestart,
-    });
-    const close = createGatewayCloseHandler(deps);
-
-    const result = await close({ reason: "SIGTERM", drainTimeoutMs: 0 });
-
-    expect(result.warnings).not.toContain("restart-reply-drain");
-    expect(controller.signal.aborted).toBe(true);
-    expect(isAgentRunRestartAbortReason(controller.signal.reason)).toBe(false);
-    expect(chatAbortControllers.size).toBe(0);
-    expect(getPendingReplyCount).not.toHaveBeenCalled();
-    expect(markMainSessionsAbortedForRestart).not.toHaveBeenCalled();
-    expect(deps.broadcast).toHaveBeenCalledWith(
-      "chat",
-      expect.objectContaining({ runId: "run-1", state: "aborted", stopReason: "rpc" }),
-      { sessionKeys: ["session-1"] },
-    );
+  registerOrdinaryStopRunCancellationTests({
+    createGatewayCloseTestDeps,
+    createGatewayCloseHandler,
   });
 
   it("aborts active runs immediately when restart drain budget is exhausted", async () => {
@@ -2779,7 +2746,6 @@ describe("createGatewayCloseHandler", () => {
     expect(terminate).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
-
   it("continues shutdown when websocket close hangs without tracked clients", async () => {
     vi.useFakeTimers();
 

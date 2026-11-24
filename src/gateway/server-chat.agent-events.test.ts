@@ -35,6 +35,7 @@ import {
   releaseAgentRunContext,
 } from "../infra/agent-run-registry.js";
 import { subscribePluginSessionsChanged } from "../plugins/services.test-support.js";
+import { registerNativeInputCompletionTests } from "./server-chat.native-input-completion.test-support.js";
 import { GatewayClientRegistry } from "./server/client-registry.js";
 
 const persistGatewaySessionLifecycleEventMock = vi.fn();
@@ -4775,39 +4776,7 @@ describe("agent event handler", () => {
     });
   });
 
-  it("emits lifecycle chat errors for active chat.send runs with a chat run link", () => {
-    vi.useFakeTimers();
-    const { broadcast, chatRunState, clearAgentRunContext, agentRunSeq, handler } = createHarness({
-      resolveSessionKeyForRun: () => "session-chat-send",
-      lifecycleErrorRetryGraceMs: 100,
-      isChatSendRunActive: (runId) => runId === "run-chat-send",
-    });
-    registerChatRun(chatRunState, "run-chat-send", "session-chat-send", "run-chat-send");
-    registerAgentRunContext("run-chat-send", { sessionKey: "session-chat-send" });
-
-    emitAgentEvent(handler, "run-chat-send", "lifecycle", {
-      phase: "error",
-      error: "chat.send failed",
-    });
-
-    vi.advanceTimersByTime(100);
-
-    const chatErrors = chatBroadcastCalls(broadcast).filter(
-      ([, payload]) => (payload as { state?: string }).state === "error",
-    );
-    expect(chatErrors).toHaveLength(1);
-    const errorPayload = chatErrors[0]?.[1] as Record<string, unknown>;
-    expectPayloadFields(errorPayload, {
-      runId: "run-chat-send",
-      sessionKey: "session-chat-send",
-      state: "error",
-      errorMessage: "chat.send failed",
-    });
-    expect(errorPayload).not.toHaveProperty("message");
-    expect(chatRunState.registry.peek("run-chat-send")).toBeUndefined();
-    expect(clearAgentRunContext).toHaveBeenCalledWith("run-chat-send");
-    expect(agentRunSeq.has("run-chat-send")).toBe(false);
-  });
+  registerNativeInputCompletionTests(createHarness);
 
   it.each(["agent:main:reply-dispatch-drain", "global"])(
     "drains reply-dispatch text once across %s after its source is released",

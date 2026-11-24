@@ -25,6 +25,7 @@ export function recoverTerminalSessionEntryForVisibleTurn(entry: SessionEntry): 
     restartRecoveryDisableMessageTool: undefined,
     restartRecoverySuppressTextDelivery: undefined,
     restartRecoveryDeliveryRequestFingerprint: undefined,
+    restartRecoveryInputCompletion: undefined,
     restartRecoveryDeliveryRunId: undefined,
     restartRecoveryDeliverySourceRunId: undefined,
     restartRecoverySourceReplyDeliveryMode: undefined,

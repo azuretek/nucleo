@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import type { HumanMention } from "../../../packages/gateway-protocol/src/index.js";
+import type { AgentRunTerminalOutcome } from "../../agents/agent-run-terminal-outcome.types.js";
 import { OPENCLAW_AGENT_RUNTIME_ID } from "../../agents/agent-runtime-id.js";
 import { listActiveEmbeddedRunSessionIds } from "../../agents/embedded-agent-runner/active-run-projections.js";
 import { shouldComputeCommandAuthorized } from "../../auto-reply/command-detection.js";
@@ -17,11 +18,13 @@ import {
 } from "../../config/sessions/restart-recovery-state.js";
 import {
   patchSessionEntryCore,
+  readSessionInputCompletionForRetry,
   type SessionTranscriptTurnExpectedState,
   type SessionTranscriptTurnLifecyclePatch,
 } from "../../config/sessions/session-accessor.js";
 import { buildRestartRecoveryExpectedState } from "../../config/sessions/session-transcript-turn-state.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { getAgentEventLifecycleGeneration } from "../../infra/agent-events.js";
 import { loadOrCreateProcessDeviceIdentity } from "../../infra/device-identity.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import { findRestartRecoveryUnsafeChatAdmissionHook } from "../../plugins/restart-recovery-hook-safety.js";
@@ -29,6 +32,7 @@ import { isCronSessionKey, isSubagentSessionKey } from "../../routing/session-ke
 import { isAgentHarnessSessionKey } from "../../sessions/agent-harness-session-key.js";
 import { isAcpSessionKey, resolveSessionDispatchKind } from "../../sessions/session-key-utils.js";
 import { recordGatewaySessionRunFailure } from "../../sessions/session-run-error.js";
+import { buildRunUserTurnIdempotencyKey } from "../../sessions/user-turn-transcript.metadata.js";
 import { sessionDeliveryChannel } from "../../utils/delivery-context.read.js";
 import { parseInlineDirectives } from "../../utils/directive-tags.js";
 import { resolveChatRunOwnerAgentId } from "../chat-run-owner.js";
@@ -66,9 +70,15 @@ type RetryableUnadoptedChatClaim = SessionEntry & {
   status: "failed" | "killed";
 };
 
+/** A retry answered by the original input's committed completion row, not by its tombstone. */
+export type DurableChatInputCompletion =
+  | { kind: "conflict" }
+  | { kind: "unverified" }
+  | { kind: "outcome"; outcome: AgentRunTerminalOutcome };
+
 type DurableChatClaimResolution =
   | { kind: "continue"; entry?: SessionEntry }
-  | { kind: "accepted" }
+  | { kind: "accepted"; inFlight: boolean; completion?: DurableChatInputCompletion }
   | { kind: "pending"; message: string }
   | { kind: "rejected"; message: string; unavailable?: true };
 
@@ -165,6 +175,11 @@ export async function resolveDurableChatClaim(params: {
   cfg: OpenClawConfig;
   clientRunId: string;
   entry?: SessionEntry;
+  /** chat.send retries only: the agent store, and the retry's own request fingerprint. */
+  inputCompletion?: {
+    agentId: string;
+    requestFingerprint: (sessionId: string) => string | undefined;
+  };
   persistedSessionKey: string;
   reloadEntry: () => SessionEntry | undefined;
   storePath: string;
@@ -226,10 +241,67 @@ export async function resolveDurableChatClaim(params: {
       };
     }
   }
-  return isAdoptedRestartRecoveryClaim(entry, params.clientRunId) ||
-    hasRestartRecoveryTerminalRun(entry, params.clientRunId)
-    ? { kind: "accepted" }
-    : { kind: "continue", entry };
+  const adopted = isAdoptedRestartRecoveryClaim(entry, params.clientRunId);
+  if (!adopted && !hasRestartRecoveryTerminalRun(entry, params.clientRunId)) {
+    return { kind: "continue", entry };
+  }
+  // Accepted is not completed: an adopted claim, or a source tombstoned mid-run whose
+  // completion is still owed, stays in flight until the settling commit marks it done.
+  const inFlight =
+    entry?.status === "running" &&
+    (adopted || entry.restartRecoveryInputCompletion?.sourceRunId === params.clientRunId);
+  if (!inFlight) {
+    const completion = resolveDurableChatInputCompletion(params, entry);
+    if (completion) {
+      return { kind: "accepted", inFlight, completion };
+    }
+  }
+  return { kind: "accepted", inFlight };
+}
+
+/**
+ * A tombstone proves acceptance, not outcome. The original input's completion row, when
+ * present, is the answer; no row (an untracked or pre-fix input) keeps the tombstone answer,
+ * and a store that cannot be read answers unverified, never success.
+ */
+function resolveDurableChatInputCompletion(
+  params: Pick<
+    Parameters<typeof resolveDurableChatClaim>[0],
+    "canonicalSessionKey" | "clientRunId" | "inputCompletion" | "storePath"
+  >,
+  entry: SessionEntry | undefined,
+): DurableChatInputCompletion | undefined {
+  const sessionId = entry?.sessionId;
+  if (
+    !params.inputCompletion ||
+    !sessionId ||
+    !hasRestartRecoveryTerminalRun(entry, params.clientRunId)
+  ) {
+    return undefined;
+  }
+  let row: ReturnType<typeof readSessionInputCompletionForRetry>;
+  try {
+    row = readSessionInputCompletionForRetry(
+      {
+        agentId: params.inputCompletion.agentId,
+        sessionId,
+        sessionKey: params.canonicalSessionKey,
+        storePath: params.storePath,
+      },
+      buildRunUserTurnIdempotencyKey(params.clientRunId),
+    );
+  } catch {
+    return { kind: "unverified" };
+  }
+  if (!row) {
+    return undefined;
+  }
+  const fingerprint = params.inputCompletion.requestFingerprint(sessionId);
+  return row.run_id === params.clientRunId &&
+    fingerprint !== undefined &&
+    row.request_hash === "request:" + fingerprint
+    ? { kind: "outcome", outcome: row.outcome }
+    : { kind: "conflict" };
 }
 
 function isRestartSafeChatSession(params: {
@@ -365,6 +437,8 @@ export function buildRestartSafeChatTranscriptState(params: {
   admission: RestartSafeChatAdmission;
   clientRunId: string;
   startedAt: number;
+  /** Tracked browser input whose completion row an adopting recovery must write. */
+  inputCompletion?: { sessionId: string; requestHash: string };
 }): {
   expectedSessionState?: SessionTranscriptTurnExpectedState;
   sessionLifecyclePatch: SessionTranscriptTurnLifecyclePatch;
@@ -395,6 +469,17 @@ export function buildRestartSafeChatTranscriptState(params: {
       restartRecoverySourceReplyDeliveryMode: undefined,
       ...(params.admission.priorTerminalSourceRunId
         ? { restartRecoveryTerminalRunIds: [params.admission.priorTerminalSourceRunId] }
+        : {}),
+      ...(params.inputCompletion
+        ? {
+            restartRecoveryInputCompletion: {
+              sourceRunId: params.clientRunId,
+              sessionId: params.inputCompletion.sessionId,
+              idempotencyKey: buildRunUserTurnIdempotencyKey(params.clientRunId),
+              requestHash: params.inputCompletion.requestHash,
+              lifecycleGeneration: getAgentEventLifecycleGeneration(),
+            },
+          }
         : {}),
     },
   };

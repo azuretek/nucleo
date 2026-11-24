@@ -7,6 +7,7 @@ import { runWithSqliteBusyTimeout } from "../../infra/sqlite-busy-timeout.js";
 import type { PersistedUserTurnMessage } from "../../sessions/user-turn-transcript.types.js";
 import {
   closeOpenClawAgentDatabasesForTest,
+  closeOpenClawAgentDatabasesAsync,
   deferOpenClawAgentPostCommitPublication,
   openOpenClawAgentDatabase,
   runOpenClawAgentWriteTransaction,
@@ -234,6 +235,7 @@ describe("committed pending input release", () => {
     await replaceTranscriptEvents(scope(), []);
     rotateAgentEventLifecycleGeneration();
     closeOpenClawAgentDatabasesForTest();
+    await closeOpenClawAgentDatabasesAsync();
     expect(readSessionSubmittedInput(scope(), "collect-a:user")).toEqual(first.message);
     expect(readSessionSubmittedInput(scope(), "collect-b:user")).toEqual(second.message);
     const duplicate = await stage("collect-a", {
@@ -815,6 +817,49 @@ describe("committed pending input release", () => {
           .db.prepare("SELECT state, consumed_event_id FROM session_pending_inputs ORDER BY seq")
           .all(),
       ).toEqual(sources.map(() => ({ state: "cancelled", consumed_event_id: null })));
+    },
+  );
+  it.each([false, true])(
+    "commits collected tracked source completion atomically (revoked=%s)",
+    async (revoked) => {
+      let secondCurrent = true;
+      const first = await stage("tracked-collect-a", { trackCompletion: true });
+      const second = await stage("tracked-collect-b", {
+        trackCompletion: true,
+        assertCurrent: () => {
+          if (!secondCurrent) {
+            throw new Error("second source revoked");
+          }
+        },
+      });
+      const aggregate = expectDefined(
+        bindSessionPendingInputSources([first, second], message("tracked-collect-aggregate")),
+        "Expected aggregate custody",
+      );
+      receipts.push(aggregate);
+      promoteSync(aggregate);
+      const outcome = buildAgentRunTerminalOutcome({ status: "ok" });
+      expect(aggregate.complete).toBeTypeOf("function");
+      secondCurrent = !revoked;
+      if (revoked) {
+        expect(() => aggregate.complete!(outcome)).toThrow("second source revoked");
+        expect(completionRows()).toEqual([]);
+        secondCurrent = true;
+      }
+      aggregate.complete!(outcome);
+      expect(completionRows()).toMatchObject([
+        { run_id: "tracked-collect-a", succeeded: 1 },
+        { run_id: "tracked-collect-b", succeeded: 1 },
+      ]);
+      aggregate.finish("interrupted");
+      rotateAgentEventLifecycleGeneration();
+      closeOpenClawAgentDatabasesForTest();
+      await closeOpenClawAgentDatabasesAsync();
+      for (const id of ["tracked-collect-a", "tracked-collect-b"]) {
+        const replay = await stage(id, { trackCompletion: true });
+        expect(replay.completion).toMatchObject({ status: "ok" });
+        expect(() => replay.run(() => {})).toThrow("already completed");
+      }
     },
   );
 });

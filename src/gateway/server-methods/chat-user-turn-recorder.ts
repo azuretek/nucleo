@@ -1,6 +1,4 @@
-import { createHash } from "node:crypto";
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
-import { stableStringify } from "@openclaw/normalization-core/stable-stringify";
 import { runAgentHarnessBeforeMessageWriteHook } from "../../agents/harness/hook-helpers.js";
 import { normalizeMessageClientSources } from "../../chat/message-client-source.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
@@ -13,11 +11,13 @@ import {
 } from "../../sessions/user-turn-transcript.js";
 import type { UserTurnOriginalInputCommit } from "../../sessions/user-turn-transcript.types.js";
 import { extractTextFromChatContent } from "../../shared/chat-content.js";
+import { isBrowserOperatorUiClient } from "../../utils/message-channel.js";
 import type { MentionInbox } from "../mention-inbox.types.js";
 import { formatForLog } from "../ws-log.js";
 import { hasGatewayAdminScope } from "./chat-origin-routing.js";
 import { buildRestartSafeChatTranscriptState } from "./chat-restart-recovery.js";
 import type { AdmittedChatSend } from "./chat-send-admission.js";
+import { resolveChatSendInputRequestFingerprint } from "./chat-send-input-retry.js";
 import {
   resolveChatSendReplyContext,
   type ChatSendReplyContextFields,
@@ -106,26 +106,22 @@ export function createGatewayChatUserTurnController(params: {
       }))
     : Promise.resolve(baseInput);
   let contextFreeCommand = false;
+  const pendingInputRequestFingerprint = resolveChatSendInputRequestFingerprint({
+    client: params.client,
+    request,
+    sessionId: admission.sessionBinding.sessionId,
+  });
+  // Reuse the authenticated request fingerprint and transactional completion owner.
+  // Transcript promotion alone is not terminal processing: direct custody is deleted.
+  const trackInputCompletion = Boolean(
+    senderProfileId &&
+    !params.client?.internal?.syntheticClient &&
+    isBrowserOperatorUiClient(params.client?.connect.client) &&
+    !request.goalOperation,
+  );
   const recorder: UserTurnTranscriptRecorder = createUserTurnTranscriptRecorder({
-    ...(sender?.id && !request.goalOperation
-      ? {
-          // Attribution and submitted bytes survive reconnect; display names, leaf
-          // cursors and generated media paths are not immutable request identity.
-          pendingInputRequestFingerprint: createHash("sha256")
-            .update(
-              stableStringify([
-                {
-                  ...request.p,
-                  sessionId: admission.sessionBinding.sessionId,
-                  expectedLeafEntryId: undefined,
-                },
-                sender.identity ?? sender.id,
-                hasGatewayAdminScope(params.client),
-              ]),
-            )
-            .digest("hex"),
-        }
-      : {}),
+    trackInputCompletion,
+    ...(pendingInputRequestFingerprint ? { pendingInputRequestFingerprint } : {}),
     ...(request.goalOperation
       ? {
           sessionTurnMutation: {
@@ -158,6 +154,15 @@ export function createGatewayChatUserTurnController(params: {
           admission: admission.restartSafeAdmission,
           clientRunId: session.clientRunId,
           startedAt: params.startedAt,
+          // Staged tracked input hashes as request:<fingerprint>; recovery must reuse it.
+          ...(trackInputCompletion && pendingInputRequestFingerprint
+            ? {
+                inputCompletion: {
+                  sessionId: admission.sessionBinding.sessionId,
+                  requestHash: `request:${pendingInputRequestFingerprint}`,
+                },
+              }
+            : {}),
         })
       : {}),
     errorContext: "gateway chat user turn transcript",
