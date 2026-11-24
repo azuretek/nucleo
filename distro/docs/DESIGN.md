@@ -85,7 +85,7 @@ The pool holds the authoritative checkout and runs the assembly, because replayi
 
 ## Deployment
 
-A roll replaces a running service, so it is deliberate, it waits for Abi, and the previous tag stays on the host for rollback. Development images are the ones we roll while working; a release is what we stand behind.
+A roll replaces a running service, so it is deliberate, it waits for the maintainer, and the previous tag stays on the host for rollback. Development images are the ones we roll while working; a release is what we stand behind.
 
 ## What we deliberately do not do
 
