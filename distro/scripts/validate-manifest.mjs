@@ -106,6 +106,10 @@ for (const [i, p] of (m.patches || []).entries()) {
   need(Number.isInteger(p.n), `patches[${i}].n must be an integer`);
   need(typeof p.branch === "string" && p.branch, `patches[${i}].branch is required`);
   need(typeof p.subject === "string" && p.subject, `patches[${i}].subject is required`);
+  need(
+    p.runner === undefined || p.runner === "repo",
+    `patches[${i}].runner must be "repo" when set`,
+  );
   if (seenBranches.has(p.branch)) problems.push(`duplicate patch branch: ${p.branch}`);
   if (seenNumbers.has(p.n)) problems.push(`duplicate patch number: ${p.n}`);
   seenBranches.add(p.branch);

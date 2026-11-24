@@ -43,6 +43,52 @@ if (!existsSync(checkout)) {
 const patches = manifest.patches.filter((p) => (only ? p.n === only : true));
 let held = 0;
 const missing = [];
+
+// ★ A patch opts into the repository's own test runner with "runner": "repo"; every other patch keeps
+// bare Vitest, because some carried tests have only ever passed there and moving them is a change of
+// its own. For opted-in patches the E2E runtime is prepared ONCE per gate run, by the setup upstream's
+// E2E Vitest config runs, and reused the way the repository runner reuses its own preparation; left to
+// each patch, every one listing an E2E test rebuilt the whole tree inside its own bound and timed out.
+const usesRepoRunner = (p) => p.runner === "repo";
+const E2E_TEST = /\.e2e\.test\.[cm]?[jt]s$/;
+const TEST_FILE = /\.test\.[cm]?[jt]sx?$/;
+const E2E_SETUP = "test/vitest/vitest.e2e.global-setup.ts";
+const PREPARE_MS = 45 * 60 * 1000;
+const runnerEnv = { ...process.env };
+let e2eFailure = null;
+if (patches.some((p) => usesRepoRunner(p) && (p.tests || []).some((file) => E2E_TEST.test(file)))) {
+  if (existsSync(join(checkout, E2E_SETUP))) {
+    console.log("   preparing the E2E runtime once for repo-runner patches (" + E2E_SETUP + ")");
+    const prep = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        "./scripts/tsx.mjs",
+        "--input-type=module",
+        "-e",
+        "const setup = await import(" +
+          JSON.stringify("./" + E2E_SETUP) +
+          "); await setup.default();",
+      ],
+      {
+        cwd: checkout,
+        encoding: "utf8",
+        maxBuffer: 1 << 30,
+        timeout: PREPARE_MS,
+        killSignal: "SIGTERM",
+      },
+    );
+    if (prep.status === 0) {
+      runnerEnv.OPENCLAW_E2E_USE_PREBUILT_DIST = "1";
+    } else {
+      e2eFailure =
+        "E2E runtime preparation failed (rc=" + prep.status + ", signal=" + prep.signal + ")";
+      console.log(String((prep.stdout || "") + (prep.stderr || "")).slice(-6000));
+    }
+  } else {
+    e2eFailure = "this tree has no E2E setup (" + E2E_SETUP + ")";
+  }
+}
 for (const p of patches) {
   // The step definition names the patches it covers, so a patch never has to know about the
   // build. A patch with no test file of its own is satisfied only when a declared step covers it.
@@ -76,11 +122,46 @@ for (const p of patches) {
   // suite silently, which is indistinguishable from "still working" and wastes the run.
   const PER_PATCH_MS = 10 * 60 * 1000;
   const nodeTests = files.every((file) => file.startsWith("distro/") && file.endsWith(".test.mjs"));
+  // An opted-in patch runs through the checkout's own test runner, the command `pnpm test` runs. It
+  // routes each file to the config that owns it and prepares the compiled workers some tests need;
+  // under bare Vitest those tests fail for want of a runtime they never run without.
+  const repo = !nodeTests && usesRepoRunner(p);
+  const repoRunner = ["scripts/tsx.mjs", "scripts/test-projects.mts"];
+  if (repo && !repoRunner.every((file) => existsSync(join(checkout, file)))) {
+    console.log(
+      String(p.n).padStart(2) +
+        " " +
+        p.branch.padEnd(46) +
+        " FAIL  this tree has no repository test runner (" +
+        repoRunner.join(", ") +
+        ")",
+    );
+    missing.push(p.branch + " (no test runner)");
+    continue;
+  }
+  // A patch may also list non-test inputs (a tsconfig its typecheck covers). They must exist, but
+  // only test files go to the runner, which rejects any explicit target that matches no test file.
+  const testFiles = repo ? files.filter((file) => TEST_FILE.test(file)) : files;
+  if (!testFiles.length) {
+    console.log(String(p.n).padStart(2) + " " + p.branch.padEnd(46) + " FAIL  no test file listed");
+    missing.push(p.branch + " (no test file)");
+    continue;
+  }
+  if (repo && e2eFailure && files.some((file) => E2E_TEST.test(file))) {
+    console.log(String(p.n).padStart(2) + " " + p.branch.padEnd(46) + " FAIL  " + e2eFailure);
+    missing.push(p.branch + " (E2E runtime)");
+    continue;
+  }
   const r = spawnSync(
-    nodeTests ? process.execPath : "pnpm",
-    nodeTests ? ["--test", ...files] : ["exec", "vitest", "run", ...files],
+    nodeTests || repo ? process.execPath : "pnpm",
+    nodeTests
+      ? ["--test", ...files]
+      : repo
+        ? ["--import", "./" + repoRunner[0], repoRunner[1], ...testFiles]
+        : ["exec", "vitest", "run", ...files],
     {
       cwd: checkout,
+      env: repo ? runnerEnv : process.env,
       encoding: "utf8",
       maxBuffer: 1 << 30,
       timeout: PER_PATCH_MS,
