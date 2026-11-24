@@ -7,7 +7,7 @@ How this repository decides that a build may go out. The scripts own the mechani
 - **Nothing publishes on a red or unrun gate.**
 - **Nothing publishes on a failed verify either.** verify is what says whether the series is actually carried, so a failed verify withholds the publication entirely and nothing builds from an assembly we cannot account for.
 - **A release is a decision, not a schedule.** No cadence and no timer: a stable is cut when we judge the dev builds good enough to stand behind, and only when something that shipped changed.
-- **A roll is deliberate and never automatic**, and it waits for the owner. The previous image tag stays on the host for rollback.
+- **A roll is deliberate and never automatic**, and it waits for the maintainer. The previous image tag stays on the host for rollback.
 - Keep the last ten published dev images. Never prune a release image, and never replace a published image in place: withdraw a bad one and build again.
 - **Upstream-first patches.** A fix that belongs to upstream OpenClaw goes there as an issue plus a PR from a topic branch, never as a PR against our fork. Once upstream takes one we drop our copy for that file, so the series shrinks rather than living forever. Nucleo-only changes stay with us and are recorded as such.
 - **Every improvement is written against the pin, never against main.** A branch cut from main is authored against unreleased code and cannot apply to a release, which is what turns every assembly into hand adaptation.
